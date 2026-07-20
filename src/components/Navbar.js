@@ -1,4 +1,5 @@
 import Blits from '@lightningjs/blits'
+import { HOLD_THROTTLE_MS } from '../helpers/animations.js'
 
 const TABS = [
   { label: 'Home', path: '/' },
@@ -47,6 +48,8 @@ export default Blits.Component('Navbar', {
     return {
       tabs: TABS,
       focusIndex: 0,
+      // Timestamp of the last accepted directional press, used for hold-throttling.
+      lastInputAt: 0,
     }
   },
   hooks: {
@@ -59,10 +62,12 @@ export default Blits.Component('Navbar', {
   },
   input: {
     left() {
+      if (!this.acceptHoldInput()) return
       if (this.focusIndex <= 0) return
       this.selectTab(this.focusIndex - 1)
     },
     right() {
+      if (!this.acceptHoldInput()) return
       if (this.focusIndex >= this.tabs.length - 1) return
       this.selectTab(this.focusIndex + 1)
     },
@@ -84,6 +89,15 @@ export default Blits.Component('Navbar', {
       const current = this.$router.currentRoute.path
       const matchIndex = this.tabs.findIndex((tab) => tab.path === current)
       if (matchIndex >= 0) this.focusIndex = matchIndex
+    },
+    // Returns true if enough time has passed since the last accepted press.
+    // Records the current time so the next call is throttled. Prevents key
+    // auto-repeat from cycling tabs faster than the underline can animate.
+    acceptHoldInput() {
+      const now = Date.now()
+      if (now - this.lastInputAt < HOLD_THROTTLE_MS) return false
+      this.lastInputAt = now
+      return true
     },
   },
 })

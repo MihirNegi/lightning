@@ -1,20 +1,17 @@
 import Blits from '@lightningjs/blits'
 
-// A single poster card. Prop-driven — the parent rail owns real keyboard focus
-// and tells this card when it is selected via the `focused` prop.
+// A single poster card. Renders only the poster image (with an optional
+// progress bar for continue-watching rails). Focus indication is NOT drawn
+// here — the parent ContentRail draws a single static frame at the focus
+// slot, and cards slide underneath it. So this component doesn't need to
+// know or care whether it's the currently-focused card.
 //
 // Template pixel values are literals (Blits templates cannot interpolate JS).
-// 260x390 total; image area is 260x300; title/genre strip below at y=314.
-// Matches CARD_W, CARD_H in constants/layout.js.
-//
-// Perf choices vs reference:
-//   - No blurred shadow (very expensive on TV GPU)
-//   - No scale animation on focus (only border + title color change)
-//   - No outer soft glow
-//   - No skeleton loader (kept dark card background as fallback)
+// Image is 260x300; wrapper stays 260x390 so the RAIL_HEIGHT math in
+// constants/layout.js and helpers/scroll.js keeps working unchanged.
 export default Blits.Component('PosterCard', {
   template: `
-    <Element w="260" h="390" :zIndex="$focused ? 10 : 1">
+    <Element w="260" h="390">
       <Element
         w="260"
         h="300"
@@ -27,31 +24,6 @@ export default Blits.Component('PosterCard', {
           <Element h="6" color="#00B3FF" :w="$progressBarWidth" />
         </Element>
       </Element>
-      <Element
-        w="260"
-        h="300"
-        :rounded="12"
-        :border="{width: 3, color: '#FFFFFF'}"
-        :alpha.transition="{value: $focused ? 1 : 0, duration: 200, easing: 'cubic-bezier(0.4, 0, 0.2, 1)'}"
-      />
-      <Text
-        y="314"
-        :content="$title"
-        size="24"
-        :color="$focused ? '#00B3FF' : '#FFFFFF'"
-        font="roboto"
-        maxwidth="260"
-        maxlines="1"
-      />
-      <Text
-        y="348"
-        :content="$genre"
-        size="18"
-        color="#AAAAAA"
-        font="roboto"
-        maxwidth="260"
-        maxlines="1"
-      />
     </Element>
   `,
   props: {
@@ -59,7 +31,6 @@ export default Blits.Component('PosterCard', {
     genre: '',
     image: '',
     progress: undefined,
-    focused: false,
   },
   computed: {
     hasProgress() {

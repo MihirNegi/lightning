@@ -1,6 +1,6 @@
 import Blits from '@lightningjs/blits'
 import { HERO_HEIGHT, RAIL_HEIGHT, NAVBAR_HEIGHT } from '../constants/layout.js'
-import { DURATION, EASING, transition } from '../helpers/animations.js'
+import { DURATION, EASING, HOLD_THROTTLE_PAGE_MS, transition } from '../helpers/animations.js'
 import { getPageScrollOffset } from '../helpers/scroll.js'
 import HeroCarousel from './HeroCarousel.js'
 import ContentRail from './ContentRail.js'
@@ -38,6 +38,8 @@ export default Blits.Component('PageContainer', {
     return {
       // 0 = hero, 1..N = rails
       sectionIndex: 0,
+      // Timestamp of the last accepted directional press, used for hold-throttling.
+      lastInputAt: 0,
     }
   },
   computed: {
@@ -56,11 +58,13 @@ export default Blits.Component('PageContainer', {
   },
   input: {
     down() {
+      if (!this.acceptHoldInput()) return
       if (this.sectionIndex >= this.rails.length) return
       this.sectionIndex++
       this.focusCurrentSection()
     },
     up() {
+      if (!this.acceptHoldInput()) return
       if (this.sectionIndex <= 0) {
         this.$emit('nav:focus-navbar')
         return
@@ -78,6 +82,16 @@ export default Blits.Component('PageContainer', {
       const ref = this.sectionIndex === 0 ? 'hero' : `rail${this.sectionIndex - 1}`
       const target = this.$select(ref)
       if (target) target.$focus()
+    },
+    // Returns true if enough time has passed since the last accepted press.
+    // Records the current time so the next call is throttled. Prevents key
+    // auto-repeat from queuing dozens of section changes on a single hold.
+    // Uses the longer page throttle (vertical scroll moves the whole page).
+    acceptHoldInput() {
+      const now = Date.now()
+      if (now - this.lastInputAt < HOLD_THROTTLE_PAGE_MS) return false
+      this.lastInputAt = now
+      return true
     },
   },
 })

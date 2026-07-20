@@ -6,6 +6,17 @@ export const DURATION = {
   hero: 800,
 }
 
+// Minimum time between two accepted directional key events on the same input
+// handler. Prevents rapid keydown auto-repeat (~30/sec) from queuing dozens of
+// state changes and making the scroll glide silently to the final target;
+// instead the user sees the focus move one step at a time.
+export const HOLD_THROTTLE_MS = 250
+
+// Longer throttle for vertical page scrolling. Vertical section changes move
+// the whole page a large distance, so we hold each section a bit longer
+// before accepting the next press.
+export const HOLD_THROTTLE_PAGE_MS = 450
+
 // Shared easing curves used across focus, scroll and hero transitions.
 export const EASING = {
   smooth: 'cubic-bezier(0.4, 0, 0.2, 1)',
