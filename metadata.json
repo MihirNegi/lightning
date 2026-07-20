@@ -1,0 +1,6 @@
+{
+  "name": "lightDemo",
+  "identifier": "com.domain.app.lightDemo",
+  "version": "1.0.0",
+  "icon": "./static/icon.png"
+}

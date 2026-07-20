@@ -1,0 +1,89 @@
+import Blits from '@lightningjs/blits'
+
+const TABS = [
+  { label: 'Home', path: '/' },
+  { label: 'Movies', path: '/movies' },
+  { label: 'Shows', path: '/shows' },
+  { label: 'Sports', path: '/sports' },
+]
+
+// Top navigation bar. Owns keyboard focus while the user is browsing tabs.
+// Left/Right cycle tabs (and switch routes), Down/Enter hand focus down into
+// the current page's content by emitting a global event.
+//
+// Template pixel values are literals because Blits parses templates at build
+// time and cannot interpolate JS. Kept in sync with constants/layout.js:
+//   1920 = STAGE_W, 130 = NAVBAR_HEIGHT, 64 = CONTENT_PADDING_X.
+//   Tabs start at x=260 (logo width) and are spaced 140px apart.
+export default Blits.Component('Navbar', {
+  template: `
+    <Element w="1920" h="130" color="rgba(11, 11, 11, 0.95)" z="100">
+      <Text
+        content="lightDemo"
+        size="40"
+        font="roboto"
+        color="#00B3FF"
+        x="64"
+        y="46"
+      />
+      <Element :for="(tab, index) in $tabs" key="$tab.path" :x="260 + $index * 140" y="46">
+        <Text
+          :content="$tab.label"
+          size="28"
+          font="roboto"
+          :color="$index === $focusIndex ? '#FFFFFF' : '#AAAAAA'"
+        />
+        <Element
+          y="42"
+          h="4"
+          :rounded="2"
+          color="#00B3FF"
+          :w.transition="{value: $index === $focusIndex ? 70 : 0, duration: 300, easing: 'cubic-bezier(0.4, 0, 0.2, 1)'}"
+        />
+      </Element>
+    </Element>
+  `,
+  state() {
+    return {
+      tabs: TABS,
+      focusIndex: 0,
+    }
+  },
+  hooks: {
+    ready() {
+      this.syncFocusIndexWithRoute()
+    },
+    focus() {
+      this.syncFocusIndexWithRoute()
+    },
+  },
+  input: {
+    left() {
+      if (this.focusIndex <= 0) return
+      this.selectTab(this.focusIndex - 1)
+    },
+    right() {
+      if (this.focusIndex >= this.tabs.length - 1) return
+      this.selectTab(this.focusIndex + 1)
+    },
+    down() {
+      this.$emit('nav:focus-content')
+    },
+    enter() {
+      this.$emit('nav:focus-content')
+    },
+  },
+  methods: {
+    // Navigate to the tab at the given index and highlight it.
+    selectTab(index) {
+      this.focusIndex = index
+      this.$router.to(this.tabs[index].path)
+    },
+    // Highlight whichever tab matches the current route (e.g. on boot or focus).
+    syncFocusIndexWithRoute() {
+      const current = this.$router.currentRoute.path
+      const matchIndex = this.tabs.findIndex((tab) => tab.path === current)
+      if (matchIndex >= 0) this.focusIndex = matchIndex
+    },
+  },
+})
