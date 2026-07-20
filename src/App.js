@@ -1,4 +1,5 @@
 import Blits from '@lightningjs/blits'
+import { FPScounter } from '@lightningjs/blits/components'
 import Navbar from './components/Navbar.js'
 import Home from './pages/Home.js'
 import Movies from './pages/Movies.js'
@@ -18,11 +19,15 @@ const TAB_ROUTE_OPTIONS = {
 export default Blits.Application({
   components: {
     Navbar,
+    FPScounter,
   },
   template: `
     <Element w="1920" h="1080" color="#0B0B0B">
       <RouterView ref="router" w="1920" h="1080" />
       <Navbar ref="navbar" />
+      <Element x="1590" y="8" z="200">
+        <FPScounter />
+      </Element>
     </Element>
   `,
   routes: [
