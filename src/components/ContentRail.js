@@ -54,14 +54,12 @@ export default Blits.Component('ContentRail', {
             :progress="$item.progress"
           />
         </Element>
-        <Element
-          x="7"
-          y="3"
-          w="270"
-          h="310"
-          :alpha="$$hasFocus ? 1 : 0"
-          :border="{width: 5, color: '#FFFFFF'}"
-        />
+        <Element x="7" y="3" w="270" h="310" :alpha="$$hasFocus ? 1 : 0">
+          <Element x="0" y="0" w="270" h="5" color="#FFFFFF" />
+          <Element x="0" y="305" w="270" h="5" color="#FFFFFF" />
+          <Element x="0" y="0" w="5" h="310" color="#FFFFFF" />
+          <Element x="265" y="0" w="5" h="310" color="#FFFFFF" />
+        </Element>
       </Element>
     </Element>
   `,
