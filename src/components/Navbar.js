@@ -59,9 +59,10 @@ export default Blits.Component('Navbar', {
       focusIndex: 0,
       // Timestamp of the last accepted directional press, used for hold-throttling.
       lastInputAt: 0,
-      // Live-updating readout in the format "50 fps   20.0 ms".
-      // Refreshed ~3x/sec by the FPS meter started in ready().
-      fpsLabel: '-- fps   --.- ms',
+      // Live-updating readout in the format "50 fps   20.0 ms   GL2 60Hz".
+      // Suffix shows the detected renderer + rAF cap so we can tell if the
+      // browser is throttling frames. Refreshed ~3x/sec by the FPS meter.
+      fpsLabel: '-- fps   --.- ms   ...',
     }
   },
   hooks: {
