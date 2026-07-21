@@ -3,7 +3,7 @@
 // scroll smoothness is bottlenecked by the tween cost per frame or by the
 // underlying render cost. Leave true for normal use; flip to false to
 // re-diagnose if scroll ever feels sluggish again.
-export const TRANSITIONS_ENABLED = true
+export const TRANSITIONS_ENABLED = false
 
 // Shared animation timing constants so every component animates with the same rhythm.
 // base (rail horizontal scroll) stays short — user is actively interacting
