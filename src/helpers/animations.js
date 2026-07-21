@@ -1,20 +1,18 @@
 // Diagnostic switch. When false, transitions built via the transition()
-// helper below snap instantly instead of animating. Kills the two big scroll
-// animations (rail horizontal scroll and page vertical scroll) without
-// touching small UI touches like focus-frame fade or navbar underline.
-//
-// A/B test on the TV: if scrolling feels smoother with this off, the
-// animations themselves are the bottleneck and we should shorten them /
-// simplify easing. If it feels the same, per-frame render cost is the
-// bottleneck (MSDF fonts, texture size, etc.) instead. Flip back to true
-// once you've tested.
-export const TRANSITIONS_ENABLED = false
+// helper below snap instantly instead of animating. Used to A/B test whether
+// scroll smoothness is bottlenecked by the tween cost per frame or by the
+// underlying render cost. Leave true for normal use; flip to false to
+// re-diagnose if scroll ever feels sluggish again.
+export const TRANSITIONS_ENABLED = true
 
 // Shared animation timing constants so every component animates with the same rhythm.
+// base/slow are deliberately kept short — the tween runs on the JS main
+// thread, so every ms the animation is active is a ms of frame-budget cost.
+// Halving the duration roughly halves the fps hit during scroll.
 export const DURATION = {
   fast: 200,
-  base: 300,
-  slow: 500,
+  base: 150,
+  slow: 250,
   hero: 800,
 }
 
@@ -30,8 +28,11 @@ export const HOLD_THROTTLE_MS = 250
 export const HOLD_THROTTLE_PAGE_MS = 450
 
 // Shared easing curves used across focus, scroll and hero transitions.
+// smooth uses ease-out (cheap, closed-form) rather than a cubic-bezier —
+// bezier curves require solving a cubic each frame to sample the progress,
+// which is measurable overhead on TV hardware during active tweens.
 export const EASING = {
-  smooth: 'cubic-bezier(0.4, 0, 0.2, 1)',
+  smooth: 'ease-out',
   bounce: 'cubic-bezier(0.34, 1.56, 0.64, 1)',
 }
 
