@@ -7,9 +7,12 @@ import PosterCard from './PosterCard.js'
 // Lazy-mount window: how many cards to render around the current selection.
 // ~7 cards fit in the visible clipping window, so BEFORE covers scroll-back
 // and AFTER buffers forward scrolling. Cards outside the window are unmounted
-// and their image textures freed — keeps GPU memory low on TV hardware.
-const WINDOW_BEFORE = 3
-const WINDOW_AFTER = 8
+// and their image textures freed — keeps GPU fill rate low on TV hardware.
+// Tuned tight: BEFORE=2 (one card behind for smooth back-scroll), AFTER=5
+// (visible cards + small forward buffer). Fewer mounted cards = fewer
+// textured quads drawn per frame.
+const WINDOW_BEFORE = 2
+const WINDOW_AFTER = 5
 
 // Horizontal step per card slot: card width + inter-card gap.
 const CARD_STEP = CARD_W + CARD_GAP
@@ -56,13 +59,9 @@ export default Blits.Component('ContentRail', {
           y="3"
           w="270"
           h="310"
-          :alpha.transition="{value: $$hasFocus ? 1 : 0, duration: 200, easing: 'cubic-bezier(0.4, 0, 0.2, 1)'}"
-        >
-          <Element x="0" y="0" w="270" h="5" color="#FFFFFF" />
-          <Element x="0" y="305" w="270" h="5" color="#FFFFFF" />
-          <Element x="0" y="0" w="5" h="310" color="#FFFFFF" />
-          <Element x="265" y="0" w="5" h="310" color="#FFFFFF" />
-        </Element>
+          :alpha="$$hasFocus ? 1 : 0"
+          :border="{width: 5, color: '#FFFFFF'}"
+        />
       </Element>
     </Element>
   `,

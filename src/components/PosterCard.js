@@ -15,7 +15,6 @@ export default Blits.Component('PosterCard', {
       <Element
         w="260"
         h="300"
-        :rounded="12"
         color="#FFFFFF"
         :src="$image"
         fit="cover"

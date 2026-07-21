@@ -6,7 +6,7 @@ Blits.Launch(App, 'app', {
   h: 1080,
   debugLevel: 0,
   enableMouse: false,
-  viewportMargin: 600,
+  viewportMargin: 150,
   canvasColor: '#0B0B0B',
   defaultFont: 'roboto',
   fonts: [
