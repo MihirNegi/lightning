@@ -24,10 +24,12 @@ export const DURATION = {
 // instead the user sees the focus move one step at a time.
 export const HOLD_THROTTLE_MS = 250
 
-// Longer throttle for vertical page scrolling. Vertical section changes move
-// the whole page a large distance, so we hold each section a bit longer
-// before accepting the next press.
-export const HOLD_THROTTLE_PAGE_MS = 450
+// Longer throttle for vertical page scrolling. Sized to leave a clear dwell
+// window between successive scrolls when the user holds Down/Up: 400ms of
+// scroll animation + ~300ms of stillness before the next press is accepted.
+// Without that dwell, back-to-back animations run into each other and rails
+// whip past too fast to read on a held key.
+export const HOLD_THROTTLE_PAGE_MS = 700
 
 // Shared easing curves used across focus, scroll and hero transitions.
 // smooth uses ease-out (cheap, closed-form) rather than a cubic-bezier —
