@@ -6,14 +6,18 @@ Blits.Launch(App, 'app', {
   h: 1080,
   debugLevel: 0,
   enableMouse: false,
-  viewportMargin: 150,
+  viewportMargin: 600,
   canvasColor: '#0B0B0B',
   defaultFont: 'roboto',
   fonts: [
+    // MSDF font: Blits' Vite plugin generates fonts/Roboto-Regular.msdf.png
+    // and .msdf.json from public/fonts/Roboto-Regular.ttf on demand. GPU
+    // renders glyphs from the atlas without per-frame rasterization, so text
+    // is essentially free during scroll animations.
     {
       family: 'roboto',
-      type: 'web',
-      file: 'fonts/Roboto-Regular.ttf',
+      type: 'msdf',
+      file: 'fonts/Roboto-Regular',
     },
   ],
 })

@@ -6,13 +6,15 @@
 export const TRANSITIONS_ENABLED = true
 
 // Shared animation timing constants so every component animates with the same rhythm.
-// base/slow are deliberately kept short — the tween runs on the JS main
-// thread, so every ms the animation is active is a ms of frame-budget cost.
-// Halving the duration roughly halves the fps hit during scroll.
+// base (rail horizontal scroll) stays short — user is actively interacting
+// with cards, so snappy feels responsive. slow (page vertical scroll) can be
+// longer for a cinematic feel because we pre-render off-screen rails via
+// index.js:viewportMargin so entering rails don't cost a first-draw spike
+// per frame during the scroll.
 export const DURATION = {
   fast: 200,
   base: 150,
-  slow: 250,
+  slow: 400,
   hero: 800,
 }
 

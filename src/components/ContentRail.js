@@ -74,6 +74,12 @@ export default Blits.Component('ContentRail', {
     return {
       selectedIndex: 0,
       scrollOffset: 0,
+      // Windowed slice of items currently mounted. Must be a state field (not
+      // computed) because Blits ':for' effects are scoped to a single state
+      // key and don't re-fire on computed changes — a computed here would be
+      // evaluated once at mount and never update, so scrolling past the
+      // initial window would show an empty focus frame.
+      visibleItems: [],
       // Timestamp of the last accepted directional press, used for hold-throttling.
       lastInputAt: 0,
     }
@@ -82,17 +88,10 @@ export default Blits.Component('ContentRail', {
     trackTransition() {
       return transition(-this.scrollOffset, { duration: DURATION.base, easing: EASING.smooth })
     },
-    // Windowed slice of items to render. Each entry carries its absolute x
-    // (posX) so filtering the array doesn't reindex the layout — cards stay
-    // at the same on-screen position regardless of where the window starts.
-    visibleItems() {
-      const start = Math.max(0, this.selectedIndex - WINDOW_BEFORE)
-      const end = Math.min(this.items.length, this.selectedIndex + WINDOW_AFTER + 1)
-      const slice = []
-      for (let i = start; i < end; i++) {
-        slice.push({ ...this.items[i], posX: 12 + i * CARD_STEP })
-      }
-      return slice
+  },
+  hooks: {
+    init() {
+      this.rebuildVisibleItems()
     },
   },
   input: {
@@ -101,12 +100,14 @@ export default Blits.Component('ContentRail', {
       if (this.selectedIndex <= 0) return
       this.selectedIndex--
       this.updateScroll()
+      this.rebuildVisibleItems()
     },
     right() {
       if (!this.acceptHoldInput()) return
       if (this.selectedIndex >= this.items.length - 1) return
       this.selectedIndex++
       this.updateScroll()
+      this.rebuildVisibleItems()
     },
     enter() {
       // No-op for now — hook up navigation/playback later.
@@ -116,6 +117,20 @@ export default Blits.Component('ContentRail', {
     // Recalculate horizontal scroll so the selected card sits at the left edge.
     updateScroll() {
       this.scrollOffset = getRailScrollOffset(this.selectedIndex, CARD_W, CARD_GAP)
+    },
+    // Rebuild the windowed visibleItems slice around the current selection.
+    // Assigning a new array reference is required — mutating in place would
+    // not trigger the reactive setter that drives the ':for' effect. Each
+    // entry carries an absolute posX so the window can slide without shifting
+    // any card's on-screen position.
+    rebuildVisibleItems() {
+      const start = Math.max(0, this.selectedIndex - WINDOW_BEFORE)
+      const end = Math.min(this.items.length, this.selectedIndex + WINDOW_AFTER + 1)
+      const slice = []
+      for (let i = start; i < end; i++) {
+        slice.push({ ...this.items[i], posX: 12 + i * CARD_STEP })
+      }
+      this.visibleItems = slice
     },
     // Returns true if enough time has passed since the last accepted press.
     // If true, also records the current time so the next call is throttled.
