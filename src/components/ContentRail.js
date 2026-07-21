@@ -11,16 +11,8 @@ import PosterCard from './PosterCard.js'
 // Tuned tight: BEFORE=2 (one card behind for smooth back-scroll), AFTER=5
 // (visible cards + small forward buffer). Fewer mounted cards = fewer
 // textured quads drawn per frame.
-//
-// DIAGNOSTIC (temporary): widened to 999/999 so every rail mounts all its
-// cards at boot and the visibleItems array never changes shape after that.
-// Purpose: separate "reactivity + :for diff cost" from "first-time texture
-// upload cost". If horizontal hold is now clean, the residual jank was
-// texture upload as the window slid. If jank stays, the cost is in Blits'
-// reactive dispatch / scene-graph diff and the fix goes elsewhere.
-// Revert to BEFORE=2, AFTER=5 after diagnosis.
-const WINDOW_BEFORE = 999
-const WINDOW_AFTER = 999
+const WINDOW_BEFORE = 2
+const WINDOW_AFTER = 5
 
 // Horizontal step per card slot: card width + inter-card gap.
 const CARD_STEP = CARD_W + CARD_GAP

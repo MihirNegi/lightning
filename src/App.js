@@ -1,5 +1,6 @@
 import Blits from '@lightningjs/blits'
 import Navbar from './components/Navbar.js'
+import TexturePrewarm from './components/TexturePrewarm.js'
 import Home from './pages/Home.js'
 import Movies from './pages/Movies.js'
 import Shows from './pages/Shows.js'
@@ -18,9 +19,11 @@ const TAB_ROUTE_OPTIONS = {
 export default Blits.Application({
   components: {
     Navbar,
+    TexturePrewarm,
   },
   template: `
     <Element w="1920" h="1080" color="#0B0B0B">
+      <TexturePrewarm />
       <RouterView ref="router" w="1920" h="1080" />
       <Navbar ref="navbar" />
     </Element>

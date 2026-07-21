@@ -44,3 +44,20 @@ export function buildHeroImages(prefix, count) {
   }
   return images
 }
+
+// Enumerate every unique image URL the app will ever request. buildPosterImages
+// and buildHeroImages cycle through fixed pools, so listing the pool slots
+// directly covers every URL any rail or hero on any page can produce. Used by
+// TexturePrewarm at boot to force Lightning to load and GPU-upload every
+// texture ahead of time — so when a PosterCard or HeroSlide later mounts, the
+// texture is already resident and no frame is dropped on first paint.
+export function getAllImageUrls() {
+  const urls = []
+  for (let slot = 1; slot <= POSTER_POOL_SIZE; slot++) {
+    urls.push(`images/posters/poster-${pad2(slot)}.jpg`)
+  }
+  for (let slot = 1; slot <= HERO_POOL_SIZE; slot++) {
+    urls.push(`images/heroes/hero-${pad2(slot)}.jpg`)
+  }
+  return urls
+}
