@@ -1,5 +1,6 @@
 import Blits from '@lightningjs/blits'
 import { HOLD_THROTTLE_MS } from '../helpers/animations.js'
+import { startFpsMeter } from '../helpers/fps.js'
 
 const TABS = [
   { label: 'Home', path: '/' },
@@ -42,6 +43,14 @@ export default Blits.Component('Navbar', {
           :w.transition="{value: $index === $focusIndex ? 70 : 0, duration: 300, easing: 'cubic-bezier(0.4, 0, 0.2, 1)'}"
         />
       </Element>
+      <Text
+        :content="$fpsLabel"
+        size="24"
+        font="roboto"
+        color="#FFFFFF"
+        x="1470"
+        y="52"
+      />
     </Element>
   `,
   state() {
@@ -50,14 +59,26 @@ export default Blits.Component('Navbar', {
       focusIndex: 0,
       // Timestamp of the last accepted directional press, used for hold-throttling.
       lastInputAt: 0,
+      // Live-updating readout in the format "50 fps   20.0 ms   work 1.0 ms".
+      // Refreshed ~3x/sec by the FPS meter started in ready().
+      fpsLabel: '-- fps   --.- ms   work --.- ms',
     }
   },
   hooks: {
     ready() {
       this.syncFocusIndexWithRoute()
+      // Start the rAF-based meter and remember the cancel function so we can
+      // stop it in destroy(). Blits state is reactive, so assigning fpsLabel
+      // re-renders the readout.
+      this.stopFps = startFpsMeter((label) => {
+        this.fpsLabel = label
+      })
     },
     focus() {
       this.syncFocusIndexWithRoute()
+    },
+    destroy() {
+      if (this.stopFps) this.stopFps()
     },
   },
   input: {
