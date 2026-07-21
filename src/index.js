@@ -10,14 +10,16 @@ Blits.Launch(App, 'app', {
   canvasColor: '#0B0B0B',
   defaultFont: 'roboto',
   fonts: [
-    // MSDF font: Blits' Vite plugin generates fonts/Roboto-Regular.msdf.png
-    // and .msdf.json from public/fonts/Roboto-Regular.ttf on demand. GPU
-    // renders glyphs from the atlas without per-frame rasterization, so text
-    // is essentially free during scroll animations.
+    // MSDF font. Blits derives the atlas URLs by replacing the extension:
+    //   file → atlasUrl:     'fonts/Roboto-Regular.ttf' → '.msdf.png'
+    //   file → atlasDataUrl: 'fonts/Roboto-Regular.ttf' → '.msdf.json'
+    // so the .ttf suffix MUST stay in the config even though only the .msdf
+    // files are actually fetched at runtime. Assets live in static/fonts/
+    // (pre-generated — see vite.config.js for the reason).
     {
       family: 'roboto',
       type: 'msdf',
-      file: 'fonts/Roboto-Regular',
+      file: 'fonts/Roboto-Regular.ttf',
     },
   ],
 })
