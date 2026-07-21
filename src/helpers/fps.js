@@ -1,6 +1,13 @@
 // Frame-timing meter plus one-shot boot diagnostics. Runs its own rAF loop
-// and emits an averaged label ~3x/second in the format:
-//   "50 fps   20.0 ms   GL2 60Hz"
+// and emits a label ~3x/second in the format:
+//   "60 fps   16.7 ms   max 42.1   3 jank   GL2 60Hz"
+//
+// Averages hide jank: a 50ms stutter once a second barely shifts the mean but
+// is what the user actually sees. So the label carries three separate numbers
+// per window — average fps (baseline), worst frame in the window (peak jank
+// magnitude), and jank count (frames > 1.5x vsync period, i.e. dropped at
+// least one frame). Reading the three together tells you whether the app is
+// consistently slow (low fps, low max) or spiky (fine fps, high max + janks).
 //
 // Diagnostic suffix is fixed after boot and answers two TV-specific questions:
 //   - GL2 / GL1 / 2D — which renderer the browser actually gave us. Old TV
@@ -13,6 +20,16 @@
 //
 // Returns a stop() function to cancel the loop (call from a destroy hook).
 const REFRESH_MS = 300
+
+// A frame counts as "jank" if it takes at least this multiple of the
+// baseline vsync period. 1.5x means dropping one full frame @60Hz (33ms >
+// 25ms threshold) is caught, but a single ~20ms borderline frame is not.
+// Scales automatically to 30Hz caps (threshold becomes 50ms there).
+const JANK_MULTIPLIER = 1.5
+
+// Fallback jank threshold used before the boot cap sampler has locked in
+// capHz. 25ms corresponds to 1.5x a 60Hz period — the common case.
+const JANK_FALLBACK_MS = 25
 
 // Number of rAF ticks to sample before locking in the "cap" reading. The
 // browser can only slip slower than the true vsync period, never faster, so
@@ -53,12 +70,17 @@ export function startFpsMeter(onUpdate) {
   let last = performance.now()
   let fpsMs = 0
   let fpsN = 0
+  let maxDt = 0
+  let jankCount = 0
   let fpsClock = last
   let rafId = 0
   let cancelled = false
 
   // rAF tick: measure dt, feed the boot cap sampler until it locks in, and
-  // every REFRESH_MS emit an averaged label with the diagnostic suffix.
+  // every REFRESH_MS emit a label with avg fps, worst frame in the window,
+  // and jank count. Note dt is derived from rAF timestamps — if the main
+  // thread stalls for 100ms, rAF misses ~6 vsyncs and the next dt reflects
+  // the full stall, so this genuinely catches main-thread jank.
   const frame = (now) => {
     if (cancelled) return
     const dt = now - last
@@ -73,14 +95,26 @@ export function startFpsMeter(onUpdate) {
 
     fpsMs += dt
     fpsN++
+    if (dt > maxDt) maxDt = dt
+    // Jank threshold scales with the detected refresh cap. Before cap
+    // locks, use the 60Hz fallback so early-boot jank still gets flagged.
+    const jankThresholdMs = capHz !== null ? (1000 / capHz) * JANK_MULTIPLIER : JANK_FALLBACK_MS
+    if (dt > jankThresholdMs) jankCount++
 
     if (now - fpsClock > REFRESH_MS) {
       const avgFrame = fpsMs / fpsN
       const suffix = capHz !== null ? `${renderer} ${capHz}Hz` : `${renderer} ...`
-      const label = `${Math.round(1000 / avgFrame)} fps   ${avgFrame.toFixed(1)} ms   ${suffix}`
+      const label =
+        `${Math.round(1000 / avgFrame)} fps   ` +
+        `${avgFrame.toFixed(1)} ms   ` +
+        `max ${maxDt.toFixed(1)}   ` +
+        `${jankCount} jank   ` +
+        suffix
       onUpdate(label)
       fpsMs = 0
       fpsN = 0
+      maxDt = 0
+      jankCount = 0
       fpsClock = now
     }
 

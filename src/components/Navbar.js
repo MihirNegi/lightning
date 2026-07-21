@@ -48,7 +48,7 @@ export default Blits.Component('Navbar', {
         size="24"
         font="roboto"
         color="#FFFFFF"
-        x="1470"
+        x="1120"
         y="52"
       />
     </Element>
@@ -59,10 +59,13 @@ export default Blits.Component('Navbar', {
       focusIndex: 0,
       // Timestamp of the last accepted directional press, used for hold-throttling.
       lastInputAt: 0,
-      // Live-updating readout in the format "50 fps   20.0 ms   GL2 60Hz".
+      // Live-updating jank readout, e.g. "60 fps   16.7 ms   max 42.1   3 jank   GL2 60Hz".
+      // The max + jank fields matter more than the average — a fine fps
+      // number with a high max and non-zero jank count is exactly the
+      // "smooth on average but visibly stuttery" case we're diagnosing.
       // Suffix shows the detected renderer + rAF cap so we can tell if the
       // browser is throttling frames. Refreshed ~3x/sec by the FPS meter.
-      fpsLabel: '-- fps   --.- ms   ...',
+      fpsLabel: '-- fps   --.- ms   max --.-   -- jank   ...',
     }
   },
   hooks: {
