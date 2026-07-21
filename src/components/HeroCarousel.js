@@ -73,9 +73,19 @@ export default Blits.Component('HeroCarousel', {
     }
   },
   hooks: {
-    // Start rotating slides as soon as the component mounts.
-    ready() {
+    // Start rotating slides only while the hero actually has focus. Rotating
+    // in the background costs frame budget (the crossfade animation on slide
+    // change is the biggest per-tick expense of this page) with no user
+    // benefit — nobody sees the change when they're scrolled to a rail or
+    // on a different tab.
+    focus() {
       this.startAutoplay()
+    },
+    unfocus() {
+      this.stopAutoplay()
+    },
+    destroy() {
+      this.stopAutoplay()
     },
   },
   input: {
@@ -108,12 +118,22 @@ export default Blits.Component('HeroCarousel', {
       this.currentIndex = index
       this.startAutoplay()
     },
-    // (Re)start the autoplay interval. Called both on mount and on manual nav.
+    // (Re)start the autoplay interval. Called when the hero gains focus and
+    // whenever the user manually changes slides (to reset the dwell timer).
     startAutoplay() {
       if (this.autoplayId) this.$clearInterval(this.autoplayId)
       this.autoplayId = this.$setInterval(() => {
         this.currentIndex = this.currentIndex === this.slides.length - 1 ? 0 : this.currentIndex + 1
       }, AUTOPLAY_INTERVAL)
+    },
+    // Cancel the autoplay interval. Called when the hero loses focus (user
+    // scrolled to a rail or switched tabs) so we stop doing per-slide work
+    // that nobody can see.
+    stopAutoplay() {
+      if (this.autoplayId) {
+        this.$clearInterval(this.autoplayId)
+        this.autoplayId = null
+      }
     },
     // Returns true if enough time has passed since the last accepted press.
     // Records the current time so the next call is throttled. Prevents key

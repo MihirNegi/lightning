@@ -1,3 +1,15 @@
+// Diagnostic switch. When false, transitions built via the transition()
+// helper below snap instantly instead of animating. Kills the two big scroll
+// animations (rail horizontal scroll and page vertical scroll) without
+// touching small UI touches like focus-frame fade or navbar underline.
+//
+// A/B test on the TV: if scrolling feels smoother with this off, the
+// animations themselves are the bottleneck and we should shorten them /
+// simplify easing. If it feels the same, per-frame render cost is the
+// bottleneck (MSDF fonts, texture size, etc.) instead. Flip back to true
+// once you've tested.
+export const TRANSITIONS_ENABLED = false
+
 // Shared animation timing constants so every component animates with the same rhythm.
 export const DURATION = {
   fast: 200,
@@ -23,8 +35,11 @@ export const EASING = {
   bounce: 'cubic-bezier(0.34, 1.56, 0.64, 1)',
 }
 
-// Build a Blits transition config with sensible defaults.
+// Build a Blits transition config with sensible defaults. When
+// TRANSITIONS_ENABLED is false, forces duration to 0 so the value snaps
+// into place on the next frame — used for the animate-vs-snap diagnostic.
 export function transition(value, options = {}) {
+  if (!TRANSITIONS_ENABLED) return { value, duration: 0 }
   return {
     value,
     duration: options.duration || DURATION.base,
