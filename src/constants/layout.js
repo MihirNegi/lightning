@@ -8,14 +8,17 @@ export const NAVBAR_HEIGHT = 130
 // Horizontal padding for content rails and hero copy
 export const CONTENT_PADDING_X = 64
 
-// Poster card dimensions and spacing between cards
+// Poster card dimensions and spacing between cards. CARD_H used to include
+// 90px of empty padding below the image for a never-implemented title label;
+// tightening it to image_height + small overhang for the progress bar makes
+// the rails visually contiguous instead of stripey.
 export const CARD_W = 260
-export const CARD_H = 390
+export const CARD_H = 310
 export const CARD_GAP = 28
 
 // Rail (a horizontal row of cards) dimensions
 export const RAIL_TITLE_HEIGHT = 76
-export const RAIL_GAP = 40
+export const RAIL_GAP = 24
 export const RAIL_HEIGHT = RAIL_TITLE_HEIGHT + CARD_H + RAIL_GAP
 
 // Hero banner at the top of each page

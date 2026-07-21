@@ -27,21 +27,22 @@ const CARD_STEP = CARD_W + CARD_GAP
 // left/right, and whichever card ends up in the focus slot appears framed.
 //
 // Template pixel values are literals (Blits templates cannot interpolate JS).
-// Height 466 = RAIL_TITLE_HEIGHT (76) + CARD_H (390). Width 1792 = RAIL_VISIBLE_WIDTH.
-// 288 = CARD_W (260) + CARD_GAP (28). Frame is 270x310 (card 260x300 + 5px each side).
+// Height 386 = RAIL_TITLE_HEIGHT (76) + CARD_H (310). Width 1792 = RAIL_VISIBLE_WIDTH.
+// Inner content clip h=334 = outer 386 - title offset 52. 288 = CARD_W (260)
+// + CARD_GAP (28). Frame is 270x310 (image 260x300 + 5px each side).
 export default Blits.Component('ContentRail', {
   components: {
     PosterCard,
   },
   template: `
-    <Element h="466">
+    <Element h="386">
       <Text
         :content="$title"
         size="32"
         font="roboto"
         :color="$$hasFocus ? '#FFFFFF' : '#AAAAAA'"
       />
-      <Element y="52" w="1792" h="414" clipping="true">
+      <Element y="52" w="1792" h="334" clipping="true">
         <Element :x.transition="$trackTransition">
           <PosterCard
             :for="(item, index) in $visibleItems"

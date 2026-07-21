@@ -19,7 +19,7 @@ const RAIL_MOUNT_AHEAD = 3
 // Rails are lazy-mounted grow-only (see visibleRails) so first paint is cheap.
 //
 // Template pixel values are literals (Blits templates cannot interpolate JS).
-// x=64 matches CONTENT_PADDING_X; 880 matches HERO_HEIGHT; 506 = RAIL_HEIGHT.
+// x=64 matches CONTENT_PADDING_X; 880 matches HERO_HEIGHT; 410 = RAIL_HEIGHT.
 export default Blits.Component('PageContainer', {
   components: {
     HeroCarousel,
@@ -33,7 +33,7 @@ export default Blits.Component('PageContainer', {
         key="$rail.id"
         :ref="'rail' + $index"
         x="64"
-        :y="880 + $index * 506"
+        :y="880 + $index * 410"
         :title="$rail.title"
         :items="$rail.items"
       />

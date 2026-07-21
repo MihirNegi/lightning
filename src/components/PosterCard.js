@@ -11,7 +11,7 @@ import Blits from '@lightningjs/blits'
 // constants/layout.js and helpers/scroll.js keeps working unchanged.
 export default Blits.Component('PosterCard', {
   template: `
-    <Element w="260" h="390">
+    <Element w="260" h="310">
       <Element
         w="260"
         h="300"

@@ -32,11 +32,13 @@ export const HOLD_THROTTLE_MS = 250
 export const HOLD_THROTTLE_PAGE_MS = 700
 
 // Shared easing curves used across focus, scroll and hero transitions.
-// smooth uses ease-out (cheap, closed-form) rather than a cubic-bezier —
-// bezier curves require solving a cubic each frame to sample the progress,
-// which is measurable overhead on TV hardware during active tweens.
+// smooth uses ease-in-out — same closed-form cost as ease-out but the
+// symmetric acceleration/deceleration reads as noticeably smoother than
+// ease-out (which decelerates only at the end, so the start feels like a
+// slam). bezier curves are avoided since sampling them each frame is
+// measurable overhead on TV hardware during active tweens.
 export const EASING = {
-  smooth: 'ease-out',
+  smooth: 'ease-in-out',
   bounce: 'cubic-bezier(0.34, 1.56, 0.64, 1)',
 }
 
