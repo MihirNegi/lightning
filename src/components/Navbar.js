@@ -59,9 +59,9 @@ export default Blits.Component('Navbar', {
       focusIndex: 0,
       // Timestamp of the last accepted directional press, used for hold-throttling.
       lastInputAt: 0,
-      // Live-updating readout in the format "50 fps   20.0 ms   work 1.0 ms".
+      // Live-updating readout in the format "50 fps   20.0 ms".
       // Refreshed ~3x/sec by the FPS meter started in ready().
-      fpsLabel: '-- fps   --.- ms   work --.- ms',
+      fpsLabel: '-- fps   --.- ms',
     }
   },
   hooks: {

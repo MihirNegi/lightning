@@ -46,6 +46,23 @@ const rails = [
   }),
   createRail({ id: 'home-top-rated', title: 'Top Rated', genres: ['Drama', 'Crime'] }),
   createRail({ id: 'home-new', title: 'New Releases', genres: ['Action', 'Comedy', 'Drama'] }),
+  createRail({ id: 'home-action', title: 'Action & Adventure', genres: ['Action', 'Adventure'] }),
+  createRail({ id: 'home-comedy', title: 'Comedy Picks', genres: ['Comedy', 'Family'] }),
+  createRail({ id: 'home-sci-fi', title: 'Sci-Fi & Fantasy', genres: ['Sci-Fi', 'Fantasy'] }),
+  createRail({ id: 'home-docs', title: 'Documentaries', genres: ['Documentary', 'Nature'] }),
+  createRail({ id: 'home-family', title: 'Family Favourites', genres: ['Family', 'Animation'] }),
+  createRail({ id: 'home-award', title: 'Award Winners', genres: ['Drama', 'Biography'] }),
+  createRail({
+    id: 'home-international',
+    title: 'International Hits',
+    genres: ['Drama', 'Thriller'],
+  }),
+  createRail({ id: 'home-classics', title: 'Timeless Classics', genres: ['Drama', 'Crime'] }),
+  createRail({
+    id: 'home-because-you-watched',
+    title: 'Because You Watched',
+    genres: ['Action', 'Mystery', 'Drama'],
+  }),
 ]
 
 export default { hero, rails }

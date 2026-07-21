@@ -32,6 +32,23 @@ const rails = [
   createRail({ id: 'shows-reality', title: 'Reality', genres: ['Reality', 'Game Show'] }),
   createRail({ id: 'shows-anime', title: 'Anime', genres: ['Anime', 'Action'] }),
   createRail({ id: 'shows-docs', title: 'Documentaries', genres: ['Documentary', 'Nature'] }),
+  createRail({ id: 'shows-crime', title: 'Crime & Mystery', genres: ['Crime', 'Mystery'] }),
+  createRail({ id: 'shows-sci-fi', title: 'Sci-Fi & Fantasy', genres: ['Sci-Fi', 'Fantasy'] }),
+  createRail({ id: 'shows-drama', title: 'Drama Series', genres: ['Drama', 'Romance'] }),
+  createRail({ id: 'shows-teen', title: 'Teen Series', genres: ['Drama', 'Comedy'] }),
+  createRail({ id: 'shows-kids', title: 'Kids & Family', genres: ['Family', 'Animation'] }),
+  createRail({
+    id: 'shows-international',
+    title: 'International Series',
+    genres: ['Drama', 'Thriller'],
+  }),
+  createRail({ id: 'shows-limited', title: 'Limited Series', genres: ['Drama', 'Mystery'] }),
+  createRail({ id: 'shows-award', title: 'Award Winning', genres: ['Drama', 'Biography'] }),
+  createRail({
+    id: 'shows-new',
+    title: 'New Episodes',
+    genres: ['Drama', 'Comedy', 'Thriller'],
+  }),
 ]
 
 export default { hero, rails }

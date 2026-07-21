@@ -28,6 +28,31 @@ const rails = [
   createRail({ id: 'sports-football', title: 'Football', genres: ['Football'] }),
   createRail({ id: 'sports-tennis', title: 'Tennis', genres: ['Tennis'] }),
   createRail({ id: 'sports-docs', title: 'Sports Documentaries', genres: ['Documentary'] }),
+  createRail({ id: 'sports-basketball', title: 'Basketball', genres: ['Basketball'] }),
+  createRail({ id: 'sports-motorsports', title: 'Motorsports', genres: ['Motorsports', 'Racing'] }),
+  createRail({ id: 'sports-golf', title: 'Golf', genres: ['Golf'] }),
+  createRail({ id: 'sports-boxing', title: 'Boxing & MMA', genres: ['Boxing', 'MMA'] }),
+  createRail({
+    id: 'sports-athletics',
+    title: 'Athletics',
+    genres: ['Athletics', 'Track & Field'],
+  }),
+  createRail({ id: 'sports-esports', title: 'eSports', genres: ['eSports', 'Gaming'] }),
+  createRail({
+    id: 'sports-classics',
+    title: 'Classic Matches',
+    genres: ['Football', 'Cricket', 'Tennis'],
+  }),
+  createRail({
+    id: 'sports-analysis',
+    title: 'Analysis & Talk Shows',
+    genres: ['Talk Show', 'Analysis'],
+  }),
+  createRail({
+    id: 'sports-upcoming',
+    title: 'Upcoming Events',
+    genres: ['Football', 'Cricket', 'Tennis'],
+  }),
 ]
 
 export default { hero, rails }

@@ -4,6 +4,16 @@ import { DURATION, EASING, HOLD_THROTTLE_MS, transition } from '../helpers/anima
 import { getRailScrollOffset } from '../helpers/scroll.js'
 import PosterCard from './PosterCard.js'
 
+// Lazy-mount window: how many cards to render around the current selection.
+// ~7 cards fit in the visible clipping window, so BEFORE covers scroll-back
+// and AFTER buffers forward scrolling. Cards outside the window are unmounted
+// and their image textures freed — keeps GPU memory low on TV hardware.
+const WINDOW_BEFORE = 3
+const WINDOW_AFTER = 8
+
+// Horizontal step per card slot: card width + inter-card gap.
+const CARD_STEP = CARD_W + CARD_GAP
+
 // Horizontally scrolling rail of poster cards. Owns real keyboard focus:
 // Left/Right moves the selected card, and the previously selected card is
 // remembered while the component instance is alive (via router keepAlive).
@@ -31,10 +41,10 @@ export default Blits.Component('ContentRail', {
       <Element y="52" w="1792" h="414" clipping="true">
         <Element :x.transition="$trackTransition">
           <PosterCard
-            :for="(item, index) in $items"
+            :for="(item, index) in $visibleItems"
             key="$item.id"
             y="8"
-            :x="12 + $index * 288"
+            :x="$item.posX"
             :title="$item.title"
             :genre="$item.genre"
             :image="$item.image"
@@ -71,6 +81,18 @@ export default Blits.Component('ContentRail', {
   computed: {
     trackTransition() {
       return transition(-this.scrollOffset, { duration: DURATION.base, easing: EASING.smooth })
+    },
+    // Windowed slice of items to render. Each entry carries its absolute x
+    // (posX) so filtering the array doesn't reindex the layout — cards stay
+    // at the same on-screen position regardless of where the window starts.
+    visibleItems() {
+      const start = Math.max(0, this.selectedIndex - WINDOW_BEFORE)
+      const end = Math.min(this.items.length, this.selectedIndex + WINDOW_AFTER + 1)
+      const slice = []
+      for (let i = start; i < end; i++) {
+        slice.push({ ...this.items[i], posX: 12 + i * CARD_STEP })
+      }
+      return slice
     },
   },
   input: {
