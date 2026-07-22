@@ -1,6 +1,6 @@
 import Blits from '@lightningjs/blits'
 import { CARD_W, CARD_GAP } from '../constants/layout.js'
-import { DURATION, EASING, HOLD_THROTTLE_MS, transition } from '../helpers/animations.js'
+import { DURATION, HOLD_THROTTLE_RAIL_MS, transition } from '../helpers/animations.js'
 import { getRailScrollOffset } from '../helpers/scroll.js'
 import PosterCard from './PosterCard.js'
 
@@ -90,7 +90,13 @@ export default Blits.Component('ContentRail', {
   },
   computed: {
     trackTransition() {
-      return transition(-this.scrollOffset, { duration: DURATION.base, easing: EASING.smooth })
+      // Linear (not ease-in-out) so a hold-scroll reads as one continuous
+      // slide instead of a sequence of decelerate-halt-accelerate steps.
+      // With HOLD_THROTTLE_RAIL_MS matched to DURATION.base, consecutive
+      // card animations chain end-to-end with no gap; linear velocity
+      // means the position curve is a straight line across those chained
+      // segments — no wobble at the boundary between cards.
+      return transition(-this.scrollOffset, { duration: DURATION.base, easing: 'linear' })
     },
   },
   hooks: {
@@ -138,10 +144,13 @@ export default Blits.Component('ContentRail', {
     },
     // Returns true if enough time has passed since the last accepted press.
     // If true, also records the current time so the next call is throttled.
-    // Used to stop key auto-repeat from firing 30 events per second.
+    // Used to stop key auto-repeat from firing 30 events per second. Uses
+    // HOLD_THROTTLE_RAIL_MS (150ms) rather than the generic 250ms so the
+    // throttle exactly matches the scroll animation duration — chained
+    // animations run back-to-back with no visible gap during hold.
     acceptHoldInput() {
       const now = Date.now()
-      if (now - this.lastInputAt < HOLD_THROTTLE_MS) return false
+      if (now - this.lastInputAt < HOLD_THROTTLE_RAIL_MS) return false
       this.lastInputAt = now
       return true
     },

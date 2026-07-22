@@ -24,6 +24,16 @@ export const DURATION = {
 // instead the user sees the focus move one step at a time.
 export const HOLD_THROTTLE_MS = 250
 
+// Rail-specific throttle. Matched exactly to DURATION.base above so that
+// during a horizontal hold-scroll, one card animation ends the same tick
+// the next press is accepted — no gap between chained animations. With
+// the previous 250ms throttle over a 150ms animation, users saw the
+// scroll decelerate to a halt, pause for ~100ms, then accelerate again,
+// which reads as "stopping and going" on a held key. 150ms/150ms with a
+// linear ease (see ContentRail.trackTransition) reads as one continuous
+// slide at constant velocity.
+export const HOLD_THROTTLE_RAIL_MS = 150
+
 // Longer throttle for vertical page scrolling. Sized to leave a clear dwell
 // window between successive scrolls when the user holds Down/Up: 400ms of
 // scroll animation + ~300ms of stillness before the next press is accepted.
