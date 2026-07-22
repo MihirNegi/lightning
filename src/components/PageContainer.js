@@ -78,19 +78,8 @@ export default Blits.Component('PageContainer', {
       if (!this.acceptHoldInput()) return
       if (this.sectionIndex >= this.rails.length) return
       this.sectionIndex++
+      this.ensureMounted(this.sectionIndex - 1 + RAIL_MOUNT_AHEAD)
       this.focusCurrentSection()
-      // Defer the rail-mount work to the next animation frame. The rails
-      // we're scrolling TO are already mounted (from a previous
-      // ensureMounted call with RAIL_MOUNT_AHEAD look-ahead), so the only
-      // rail this mounts is the one further-ahead that will be needed for
-      // the user's NEXT press ~700ms from now. Moving it off the input
-      // frame means the frame that kicks off the scroll animation doesn't
-      // pay for Blits :for + Lightning node creation + N texture requests
-      // for ~7 PosterCard children of the newly-mounted rail — which was
-      // the 3-dropped-frame stall on vertical hold.
-      requestAnimationFrame(() => {
-        this.ensureMounted(this.sectionIndex - 1 + RAIL_MOUNT_AHEAD)
-      })
     },
     up() {
       if (!this.acceptHoldInput()) return
