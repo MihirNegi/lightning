@@ -6,16 +6,15 @@
 export const TRANSITIONS_ENABLED = true
 
 // Shared animation timing constants so every component animates with the same rhythm.
-// base (rail horizontal scroll) is 200ms — this is the sweet spot premium TV
-// apps (Netflix, Prime, Apple TV) tend to use per card. Below 180ms feels
-// twitchy on a TV screen at viewing distance; above 250ms feels sluggish
-// during a held scroll. slow (page vertical scroll) is longer for a
-// cinematic feel because we pre-render off-screen rails via
-// index.js:viewportMargin so entering rails don't cost a first-draw spike
-// per frame during the scroll.
+// base is the fallback duration for the transition() helper below. The
+// horizontal rail scroll no longer uses this — ContentRail drives its own
+// RAF-based continuous-velocity scroll loop with TIME_PER_CARD_MS defined
+// locally. slow (page vertical scroll) can be longer for a cinematic feel
+// because we pre-render off-screen rails via index.js:viewportMargin so
+// entering rails don't cost a first-draw spike per frame during the scroll.
 export const DURATION = {
   fast: 200,
-  base: 200,
+  base: 150,
   slow: 400,
   hero: 800,
 }
@@ -26,26 +25,24 @@ export const DURATION = {
 // instead the user sees the focus move one step at a time.
 export const HOLD_THROTTLE_MS = 250
 
-// Rail-specific throttle. Matched exactly to DURATION.base above so that
-// during a horizontal hold-scroll, one card animation ends the same tick
-// the next press is accepted — no gap between chained animations. With
-// the previous 250ms throttle over a 150ms animation, users saw the
-// scroll decelerate to a halt, pause for ~100ms, then accelerate again,
-// which reads as "stopping and going" on a held key. 200ms/200ms with a
-// linear ease (see ContentRail.trackTransition) reads as one continuous
-// slide at constant velocity — long enough per card to feel premium,
-// short enough on hold to feel responsive.
-export const HOLD_THROTTLE_RAIL_MS = 200
+// Rail-specific throttle. Matched exactly to ContentRail's TIME_PER_CARD_MS
+// (150ms) so held-key auto-repeat produces at most one accepted press per
+// card-time interval. The RAF loop in ContentRail moves at constant velocity
+// implied by that same TIME_PER_CARD_MS, so throttle = card-time gives
+// exactly one card of motion per accepted press — smooth continuous scroll
+// during hold with no target-vs-motion drift.
+export const HOLD_THROTTLE_RAIL_MS = 150
 
-// Vertical page-scroll throttle. Matched exactly to DURATION.slow so
-// consecutive rail-to-rail scrolls chain end-to-end with no gap when the
-// user holds Down/Up — the same reasoning as HOLD_THROTTLE_RAIL_MS above.
-// Previously 700ms over a 400ms animation left ~300ms of dead time per
-// step, which felt like the page was jerking between rails instead of
-// gliding through them. 400ms/400ms with linear easing (see
-// PageContainer.scrollTransition) reads as one continuous vertical
-// slide at ~2.5 rails/second.
-export const HOLD_THROTTLE_PAGE_MS = 400
+// Longer throttle for vertical page scrolling. Sized to leave a clear dwell
+// window between successive scrolls when the user holds Down/Up: 400ms of
+// scroll animation + ~300ms of stillness before the next press is accepted.
+// The dwell IS the reading pause between rails — vertical navigation is
+// discrete rail-to-rail (unlike horizontal, which is continuous flow
+// through cards), so the user wants a beat between rows to read titles.
+// Removing the dwell (400ms/400ms linear) made scroll feel "lagged"
+// because rails whipped past faster than the user's eye could focus on
+// each one.
+export const HOLD_THROTTLE_PAGE_MS = 700
 
 // Shared easing curves used across focus, scroll and hero transitions.
 // smooth uses ease-in-out — same closed-form cost as ease-out but the

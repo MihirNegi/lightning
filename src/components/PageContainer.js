@@ -1,6 +1,6 @@
 import Blits from '@lightningjs/blits'
 import { HERO_HEIGHT, RAIL_HEIGHT, NAVBAR_HEIGHT } from '../constants/layout.js'
-import { DURATION, HOLD_THROTTLE_PAGE_MS, transition } from '../helpers/animations.js'
+import { DURATION, EASING, HOLD_THROTTLE_PAGE_MS, transition } from '../helpers/animations.js'
 import { getPageScrollOffset } from '../helpers/scroll.js'
 import HeroCarousel from './HeroCarousel.js'
 import ContentRail from './ContentRail.js'
@@ -61,14 +61,7 @@ export default Blits.Component('PageContainer', {
       return getPageScrollOffset(this.sectionIndex, HERO_HEIGHT, RAIL_HEIGHT, NAVBAR_HEIGHT)
     },
     scrollTransition() {
-      // Linear easing (not ease-in-out) so a vertical hold-scroll reads
-      // as one continuous slide rather than a sequence of rail-by-rail
-      // decelerate-halt-accelerate steps. With HOLD_THROTTLE_PAGE_MS
-      // matched to DURATION.slow, chained rail transitions run back-to-
-      // back with no gap; linear velocity means the whole page slides
-      // upward at a constant rate through the held key — same treatment
-      // as ContentRail.trackTransition uses for horizontal card scroll.
-      return transition(-this.scrollOffset, { duration: DURATION.slow, easing: 'linear' })
+      return transition(-this.scrollOffset, { duration: DURATION.slow, easing: EASING.smooth })
     },
   },
   hooks: {
