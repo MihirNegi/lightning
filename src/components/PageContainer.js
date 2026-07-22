@@ -5,14 +5,6 @@ import { getPageScrollOffset } from '../helpers/scroll.js'
 import HeroCarousel from './HeroCarousel.js'
 import ContentRail from './ContentRail.js'
 
-// Grow-only lazy mount for rails: start with a small prefix mounted, and
-// extend the mounted range as the user scrolls down. Rails stay mounted once
-// visited so scroll-back is instant and image textures don't re-load. This
-// gives the big win (small first-paint on initial load) without the ref /
-// reindexing complexity of a sliding window.
-const RAIL_INITIAL_MOUNT = 4
-const RAIL_MOUNT_AHEAD = 3
-
 // Time to slide one rail into position, in ms. Sets the vertical scroll
 // cadence — held-key scroll produces one rail of motion per this interval.
 // Matched exactly to HOLD_THROTTLE_PAGE_MS in helpers/animations.js so
@@ -33,7 +25,11 @@ const SCROLL_VELOCITY_PX_PER_MS = RAIL_HEIGHT / TIME_PER_RAIL_MS
 // Generic page layout: hero at the top, then a vertical stack of content rails.
 // Handles Up/Down navigation between sections and remembers which section was
 // last focused via component state (kept alive by the router's keepAlive flag).
-// Rails are lazy-mounted grow-only (see visibleRails) so first paint is cheap.
+// All rails are mounted eagerly on init — the earlier grow-only lazy mount
+// pattern was removed because mounting a rail during a scroll press caused
+// a frame-budget spike (new scene-graph nodes + first-draw textures) that
+// was visible as a hitch on the vertical tween. Mounting up front costs a
+// slower first paint but removes that spike from every subsequent scroll.
 //
 // Scroll implementation: a manual requestAnimationFrame loop (see
 // scrollTick + ensureScrollLoopRunning) moves scrollActual toward
@@ -73,10 +69,11 @@ export default Blits.Component('PageContainer', {
     return {
       // 0 = hero, 1..N = rails
       sectionIndex: 0,
-      // Contiguous prefix of rails currently mounted. Grows as the user scrolls
-      // down (see ensureMounted). Must be a state field (not computed) because
-      // Blits ':for' effects are scoped to the specific state key they read and
-      // don't re-fire on computed changes.
+      // All rails, mounted eagerly on init. Must be a state field (not
+      // computed off `rails`) because Blits ':for' effects are scoped to the
+      // specific state key they read and don't re-fire on computed changes —
+      // and because the array reference must be set post-props-available in
+      // init(), not at state() construction time when props aren't wired yet.
       visibleRails: [],
       // Timestamp of the last accepted directional press, used for hold-throttling.
       lastInputAt: 0,
@@ -105,9 +102,10 @@ export default Blits.Component('PageContainer', {
     init() {
       // Navbar emits this when the user presses Down/Enter to enter the page.
       this.$listen('nav:focus-content', () => this.focusCurrentSection())
-      // Seed the initial visible prefix now that props are available.
-      const initial = Math.min(RAIL_INITIAL_MOUNT, this.rails.length)
-      this.visibleRails = this.rails.slice(0, initial)
+      // Mount every rail up front so scroll never triggers new mounts (which
+      // otherwise steal frame budget from the vertical scroll tween). Slice
+      // to a new array reference so Blits' ':for' reactivity picks it up.
+      this.visibleRails = this.rails.slice()
     },
     // Cancel any in-flight RAF so we don't touch state on a component
     // that's already been torn down (which would throw on the next tick).
@@ -123,7 +121,6 @@ export default Blits.Component('PageContainer', {
       if (!this.acceptHoldInput()) return
       if (this.sectionIndex >= this.rails.length) return
       this.sectionIndex++
-      this.ensureMounted(this.sectionIndex - 1 + RAIL_MOUNT_AHEAD)
       this.focusCurrentSection()
       this.updateScrollTarget()
       this.ensureScrollLoopRunning()
@@ -190,17 +187,6 @@ export default Blits.Component('PageContainer', {
       }
       this.scrollActual += Math.sign(remaining) * step
       this.rafHandle = requestAnimationFrame((next) => this.scrollTick(next))
-    },
-    // Grow the mounted range so that at least `throughIndex` (0-based rail
-    // index) is included. Called on Down-scroll so the next few rails are
-    // ready before the user can reach them. Never shrinks. Assigning a new
-    // array reference is required for Blits' ':for' effect to re-fire —
-    // mutating in place would not trigger the reactive setter.
-    ensureMounted(throughIndex) {
-      const needed = Math.min(throughIndex + 1, this.rails.length)
-      if (needed > this.visibleRails.length) {
-        this.visibleRails = this.rails.slice(0, needed)
-      }
     },
     // Returns true if enough time has passed since the last accepted press.
     // Records the current time so the next call is throttled. Prevents key
