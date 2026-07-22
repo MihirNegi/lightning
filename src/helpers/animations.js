@@ -6,14 +6,16 @@
 export const TRANSITIONS_ENABLED = true
 
 // Shared animation timing constants so every component animates with the same rhythm.
-// base (rail horizontal scroll) stays short — user is actively interacting
-// with cards, so snappy feels responsive. slow (page vertical scroll) can be
-// longer for a cinematic feel because we pre-render off-screen rails via
+// base (rail horizontal scroll) is 200ms — this is the sweet spot premium TV
+// apps (Netflix, Prime, Apple TV) tend to use per card. Below 180ms feels
+// twitchy on a TV screen at viewing distance; above 250ms feels sluggish
+// during a held scroll. slow (page vertical scroll) is longer for a
+// cinematic feel because we pre-render off-screen rails via
 // index.js:viewportMargin so entering rails don't cost a first-draw spike
 // per frame during the scroll.
 export const DURATION = {
   fast: 200,
-  base: 150,
+  base: 200,
   slow: 400,
   hero: 800,
 }
@@ -29,17 +31,21 @@ export const HOLD_THROTTLE_MS = 250
 // the next press is accepted — no gap between chained animations. With
 // the previous 250ms throttle over a 150ms animation, users saw the
 // scroll decelerate to a halt, pause for ~100ms, then accelerate again,
-// which reads as "stopping and going" on a held key. 150ms/150ms with a
+// which reads as "stopping and going" on a held key. 200ms/200ms with a
 // linear ease (see ContentRail.trackTransition) reads as one continuous
-// slide at constant velocity.
-export const HOLD_THROTTLE_RAIL_MS = 150
+// slide at constant velocity — long enough per card to feel premium,
+// short enough on hold to feel responsive.
+export const HOLD_THROTTLE_RAIL_MS = 200
 
-// Longer throttle for vertical page scrolling. Sized to leave a clear dwell
-// window between successive scrolls when the user holds Down/Up: 400ms of
-// scroll animation + ~300ms of stillness before the next press is accepted.
-// Without that dwell, back-to-back animations run into each other and rails
-// whip past too fast to read on a held key.
-export const HOLD_THROTTLE_PAGE_MS = 700
+// Vertical page-scroll throttle. Matched exactly to DURATION.slow so
+// consecutive rail-to-rail scrolls chain end-to-end with no gap when the
+// user holds Down/Up — the same reasoning as HOLD_THROTTLE_RAIL_MS above.
+// Previously 700ms over a 400ms animation left ~300ms of dead time per
+// step, which felt like the page was jerking between rails instead of
+// gliding through them. 400ms/400ms with linear easing (see
+// PageContainer.scrollTransition) reads as one continuous vertical
+// slide at ~2.5 rails/second.
+export const HOLD_THROTTLE_PAGE_MS = 400
 
 // Shared easing curves used across focus, scroll and hero transitions.
 // smooth uses ease-in-out — same closed-form cost as ease-out but the
