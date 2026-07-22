@@ -98,14 +98,23 @@ export default Blits.Component('ContentRail', {
       if (this.selectedIndex <= 0) return
       this.selectedIndex--
       this.updateScroll()
-      this.rebuildVisibleItems()
+      // Defer the visibleItems window rebuild to the next animation frame.
+      // The card entering the left of the visible window is at position
+      // selectedIndex - WINDOW_BEFORE, which is off-screen at the moment
+      // of the input press and only slides into view over the 150ms track
+      // transition. Mounting it one frame later (16.7ms) is imperceptible
+      // but keeps this input frame free of Blits :for + Lightning node
+      // creation + texture-request work — the 1-dropped-frame stall on
+      // horizontal hold.
+      requestAnimationFrame(() => this.rebuildVisibleItems())
     },
     right() {
       if (!this.acceptHoldInput()) return
       if (this.selectedIndex >= this.items.length - 1) return
       this.selectedIndex++
       this.updateScroll()
-      this.rebuildVisibleItems()
+      // See left() above for why the window rebuild is deferred.
+      requestAnimationFrame(() => this.rebuildVisibleItems())
     },
     enter() {
       // No-op for now — hook up navigation/playback later.

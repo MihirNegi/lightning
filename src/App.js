@@ -4,7 +4,6 @@ import Home from './pages/Home.js'
 import Movies from './pages/Movies.js'
 import Shows from './pages/Shows.js'
 import Sports from './pages/Sports.js'
-import { prewarmTextures } from './helpers/prewarmTextures.js'
 
 // Tab pages keep their state (scroll position, selected cards) alive when
 // switching away, and do not steal focus from the Navbar automatically -
@@ -34,12 +33,6 @@ export default Blits.Application({
   ],
   hooks: {
     ready() {
-      // Pre-warm Lightning's texture cache for every image URL the app
-      // uses. Runs once at boot before any user interaction so fetch and
-      // decode happen off the critical path. Real PosterCards and
-      // HeroSlides that later use `:src` hit the URL-keyed cache and skip
-      // the synchronous decode step that was stalling mount frames on TV.
-      prewarmTextures(this)
       // When a page presses Up on its top row, it emits this event to
       // return focus to the Navbar (pages that support this will be built in step 4).
       this.$listen('nav:focus-navbar', () => this.focusNavbar())
