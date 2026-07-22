@@ -5,14 +5,27 @@ import { getPageScrollOffset } from '../helpers/scroll.js'
 import HeroCarousel from './HeroCarousel.js'
 import ContentRail from './ContentRail.js'
 
+// Rail virtualization window: how many rails to keep mounted around the
+// focused section. Blits' :range directive uses [from, to) semantics
+// (exclusive end), so the total mounted is UP + VISIBLE + DOWN. Rails
+// outside this window are unmounted — their ContentRail instances are
+// destroyed, freeing all their card image textures. Without this every
+// rail in the page (potentially dozens) draws every frame, competing
+// with the vertical scroll tween for GPU budget.
+const RAIL_BUFFER_UP = 1
+const RAIL_BUFFER_DOWN = 1
+const RAIL_VISIBLE_ROWS = 3
+
 // Generic page layout: hero at the top, then a vertical stack of content rails.
 // Handles Up/Down navigation between sections and remembers which section was
 // last focused via component state (kept alive by the router's keepAlive flag).
-// All rails are mounted eagerly on init — the earlier grow-only lazy mount
-// pattern was removed because mounting a rail during a scroll press caused
-// a frame-budget spike (new scene-graph nodes + first-draw textures) that
-// was visible as a hitch on the vertical scroll. Mounting up front costs a
-// slower first paint but removes that spike from every subsequent scroll.
+//
+// Rail mounting: only ~5 rails (RAIL_VISIBLE_ROWS + buffers) are mounted at
+// any time via Blits' :range directive. As the user scrolls Down/Up we slide
+// the window with updateRailWindow(), which must run BEFORE focus moves so
+// the target rail is guaranteed mounted when $select() looks for it. This
+// keeps the per-frame draw cost bounded regardless of how many rails the
+// page has.
 //
 // Scroll motion: a declarative Blits :y.transition binding on the outer
 // container. Each accepted press updates sectionIndex; scrollOffset
@@ -20,12 +33,7 @@ import ContentRail from './ContentRail.js'
 // interpolates the outer y toward it over SCROLL_TRANSITION_DURATION using
 // SCROLL_TRANSITION_EASING. When a new press arrives mid-tween Blits
 // interrupts and re-tweens from the current visual position, so held
-// Down/Up chains into one continuous glide with no velocity reset. The
-// eased curve is what produces the "flowing" feel — velocity varies
-// continuously through each tween, unlike the constant velocity of a
-// manual per-frame RAF step. No throttle is needed: key auto-repeat
-// arrives faster than the tween duration, so each new press just
-// re-targets the still-in-flight tween.
+// Down/Up chains into one continuous glide with no velocity reset.
 //
 // Template pixel values are literals (Blits templates cannot interpolate JS).
 // x=64 matches CONTENT_PADDING_X; 880 matches HERO_HEIGHT; 410 = RAIL_HEIGHT.
@@ -38,7 +46,8 @@ export default Blits.Component('PageContainer', {
     <Element :y.transition="$scrollTransition">
       <HeroCarousel ref="hero" :slides="$hero" />
       <ContentRail
-        :for="(rail, index) in $visibleRails"
+        :for="(rail, index) in $rails"
+        :range="{from: $railWinStart, to: $railWinEnd}"
         key="$rail.id"
         :ref="'rail' + $index"
         x="64"
@@ -56,12 +65,12 @@ export default Blits.Component('PageContainer', {
     return {
       // 0 = hero, 1..N = rails
       sectionIndex: 0,
-      // All rails, mounted eagerly on init. Must be a state field (not
-      // computed off `rails`) because Blits ':for' effects are scoped to the
-      // specific state key they read and don't re-fire on computed changes —
-      // and because the array reference must be set post-props-available in
-      // init(), not at state() construction time when props aren't wired yet.
-      visibleRails: [],
+      // Index of the first rail mounted by the :range virtualization window.
+      railWinStart: 0,
+      // Index one past the last rail mounted by the :range window.
+      // Initial value covers rails 0 to RAIL_VISIBLE_ROWS + BUFFER_DOWN
+      // while the user is still on the hero.
+      railWinEnd: RAIL_VISIBLE_ROWS + RAIL_BUFFER_DOWN,
     }
   },
   computed: {
@@ -86,16 +95,13 @@ export default Blits.Component('PageContainer', {
     init() {
       // Navbar emits this when the user presses Down/Enter to enter the page.
       this.$listen('nav:focus-content', () => this.focusCurrentSection())
-      // Mount every rail up front so scroll never triggers new mounts (which
-      // otherwise steal frame budget from the vertical scroll tween). Slice
-      // to a new array reference so Blits' ':for' reactivity picks it up.
-      this.visibleRails = this.rails.slice()
     },
   },
   input: {
     down() {
       if (this.sectionIndex >= this.rails.length) return
       this.sectionIndex++
+      this.updateRailWindow()
       this.focusCurrentSection()
     },
     up() {
@@ -104,6 +110,7 @@ export default Blits.Component('PageContainer', {
         return
       }
       this.sectionIndex--
+      this.updateRailWindow()
       this.focusCurrentSection()
     },
     back() {
@@ -116,6 +123,18 @@ export default Blits.Component('PageContainer', {
       const ref = this.sectionIndex === 0 ? 'hero' : `rail${this.sectionIndex - 1}`
       const target = this.$select(ref)
       if (target) target.$focus()
+    },
+    // Slide the mounted-rail window so only rails near the focused section
+    // are instantiated. Must run BEFORE focusCurrentSection() so the target
+    // rail is guaranteed mounted when $select() looks for it. Same
+    // virtualization idea as ContentRail.rebuildVisibleItems, but Blits'
+    // declarative :range does the actual mount/unmount — we only bump the
+    // window bounds.
+    updateRailWindow() {
+      // sectionIndex 0 is the hero; rail indices start at sectionIndex - 1.
+      const railIndex = this.sectionIndex - 1
+      this.railWinStart = Math.max(0, railIndex - RAIL_BUFFER_UP)
+      this.railWinEnd = railIndex + RAIL_VISIBLE_ROWS + RAIL_BUFFER_DOWN
     },
   },
 })

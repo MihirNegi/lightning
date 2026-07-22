@@ -23,8 +23,7 @@ export default Blits.Component('Navbar', {
       <Text
         content="lightDemo"
         size="40"
-        font="roboto"
-        color="#00B3FF"
+color="#00B3FF"
         x="64"
         y="46"
       />
@@ -32,8 +31,7 @@ export default Blits.Component('Navbar', {
         <Text
           :content="$tab.label"
           size="28"
-          font="roboto"
-          :color="$index === $focusIndex ? '#FFFFFF' : '#AAAAAA'"
+    :color="$index === $focusIndex ? '#FFFFFF' : '#AAAAAA'"
         />
         <Element
           y="42"
@@ -46,8 +44,7 @@ export default Blits.Component('Navbar', {
       <Text
         :content="$fpsLabel"
         size="24"
-        font="roboto"
-        color="#FFFFFF"
+color="#FFFFFF"
         x="1120"
         y="52"
       />

@@ -1,17 +1,18 @@
 import Blits from '@lightningjs/blits'
 import Navbar from './components/Navbar.js'
-import Home from './pages/Home.js'
-import Movies from './pages/Movies.js'
-import Shows from './pages/Shows.js'
-import Sports from './pages/Sports.js'
 
-// Tab pages keep their state (scroll position, selected cards) alive when
-// switching away, and do not steal focus from the Navbar automatically -
-// the Navbar hands focus off to page content explicitly on Down/Enter.
+// Tab pages are destroyed when switching away, not cached. keepAlive:true
+// only works when navigation is via $router.back(), which the Navbar
+// deliberately does not do (it always calls $router.to()). Combined with
+// inHistory:false, a kept-alive view was never destroyed AND never
+// reachable again — every tab switch orphaned the previous page's view,
+// leaking rails + card textures indefinitely. keepAlive:false frees the
+// previous page cleanly on each switch. reuseComponent:false ensures a
+// fresh instance on re-entry so state resets to the top of the page.
 const TAB_ROUTE_OPTIONS = {
   passFocus: false,
   inHistory: false,
-  keepAlive: true,
+  keepAlive: false,
   reuseComponent: false,
 }
 
@@ -26,10 +27,14 @@ export default Blits.Application({
     </Element>
   `,
   routes: [
-    { path: '/', component: Home, options: TAB_ROUTE_OPTIONS },
-    { path: '/movies', component: Movies, options: TAB_ROUTE_OPTIONS },
-    { path: '/shows', component: Shows, options: TAB_ROUTE_OPTIONS },
-    { path: '/sports', component: Sports, options: TAB_ROUTE_OPTIONS },
+    // Dynamic imports — each page module (and its data helpers) is only
+    // parsed/evaluated when the user first navigates to that tab, not at
+    // app boot. Reduces initial parse + eval cost on TV JS engines and
+    // avoids building rail data for tabs the user may never visit.
+    { path: '/', component: () => import('./pages/Home.js'), options: TAB_ROUTE_OPTIONS },
+    { path: '/movies', component: () => import('./pages/Movies.js'), options: TAB_ROUTE_OPTIONS },
+    { path: '/shows', component: () => import('./pages/Shows.js'), options: TAB_ROUTE_OPTIONS },
+    { path: '/sports', component: () => import('./pages/Sports.js'), options: TAB_ROUTE_OPTIONS },
   ],
   hooks: {
     ready() {

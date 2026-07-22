@@ -42,7 +42,7 @@ export default Blits.Component('HeroCarousel', {
         :border="{width: 2, color: '#FFFFFF'}"
         :scale.transition="{value: $ctaScale, duration: 200}"
       >
-        <Text content="Watch Now" size="24" color="#FFFFFF" font="roboto" x="30" y="14" />
+        <Text content="Watch Now" size="24" color="#FFFFFF" x="30" y="14" />
       </Element>
       <Element x="64" y="850">
         <Element

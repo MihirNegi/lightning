@@ -18,17 +18,16 @@ const COPY_X_INACTIVE = CONTENT_PADDING_X - 60
 export default Blits.Component('HeroSlide', {
   template: `
     <Element w="1920" h="880" :alpha.transition="$fadeTransition">
-      <Element w="1920" h="880" :src="$image" fit="cover" color="#FFFFFF" />
+      <Element w="1920" h="880" :src="$imageSrc" fit="cover" color="#FFFFFF" />
       <Element w="1920" h="880" color="{bottom: '#0B0B0B', top: 'rgba(11, 11, 11, 0.15)'}" />
       <Element w="1920" h="260" y="620" color="{bottom: '#0B0B0B', top: 'rgba(11, 11, 11, 0)'}" />
       <Element y="520" w="900" :x.transition="$slideTransition">
-        <Text :content="$subtitle" size="26" color="#00B3FF" font="roboto" />
+        <Text :content="$subtitle" size="26" color="#00B3FF" />
         <Text
           y="42"
           :content="$title"
           size="64"
           color="#FFFFFF"
-          font="roboto"
           maxwidth="900"
           maxlines="1"
         />
@@ -37,7 +36,6 @@ export default Blits.Component('HeroSlide', {
           :content="$description"
           size="24"
           color="#DDDDDD"
-          font="roboto"
           maxwidth="820"
           maxlines="2"
           lineheight="34"
@@ -53,6 +51,15 @@ export default Blits.Component('HeroSlide', {
     active: false,
   },
   computed: {
+    // Image src descriptor with keepAlive so the hero texture survives this
+    // slide's unmount (e.g. on tab switch or scrolling out of range) and is
+    // reused on remount instead of being re-fetched, re-decoded, and
+    // re-uploaded to the GPU. Big textures (1280x586) are expensive to
+    // upload; texture reuse across tab switches removes that cost entirely
+    // when the user returns to a tab.
+    imageSrc() {
+      return { src: this.image, keepAlive: true }
+    },
     // Fade in when active, out otherwise. Uses the hero (slow) duration so the
     // transition feels premium.
     fadeTransition() {

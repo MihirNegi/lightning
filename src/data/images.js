@@ -23,7 +23,11 @@ function picsumUrl(seed, w, h) {
 
 // Build N poster image URLs for a rail. Prefix (usually rail id) keeps images
 // unique across rails so the same poster never shows up twice on a page.
-export function buildPosterImages(prefix, count, w = 260, h = 300) {
+// Default dimensions request images at TV-appropriate sizes rather than the
+// on-screen card dimensions — smaller source textures upload to the GPU
+// faster and consume less VRAM. The renderer upscales at composite time,
+// which is nearly free compared to decoding a bigger JPEG.
+export function buildPosterImages(prefix, count, w = 180, h = 270) {
   const images = []
   for (let i = 0; i < count; i++) {
     const category = POSTER_CATEGORIES[i % POSTER_CATEGORIES.length]
@@ -32,8 +36,10 @@ export function buildPosterImages(prefix, count, w = 260, h = 300) {
   return images
 }
 
-// Build hero background image URLs for a page.
-export function buildHeroImages(prefix, count, w = 1920, h = 880) {
+// Build hero background image URLs for a page. Requested at ~2/3 of the
+// on-stage size for the same reason as posters — TV composites will upscale
+// with no perceptible loss and per-image decode cost drops significantly.
+export function buildHeroImages(prefix, count, w = 1280, h = 586) {
   const images = []
   for (let i = 0; i < count; i++) {
     const category = HERO_CATEGORIES[i % HERO_CATEGORIES.length]

@@ -62,8 +62,7 @@ export default Blits.Component('ContentRail', {
       <Text
         :content="$title"
         size="32"
-        font="roboto"
-        :color="$$hasFocus ? '#FFFFFF' : '#AAAAAA'"
+:color="$$hasFocus ? '#FFFFFF' : '#AAAAAA'"
       />
       <Element y="52" w="1792" h="334" clipping="true">
         <Element :x="-$scrollActual">
