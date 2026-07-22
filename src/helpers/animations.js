@@ -33,12 +33,23 @@ export const HOLD_THROTTLE_MS = 250
 // during hold with no target-vs-motion drift.
 export const HOLD_THROTTLE_RAIL_MS = 150
 
-// Throttle for vertical page scrolling. Sets the cadence at which held-key
-// auto-repeat is allowed to advance the section index — one rail per this
-// interval. PageContainer's RAF loop then eases from the previous target
-// to the new one using exponential smoothing, so held presses produce a
-// continuous flowing scroll rather than a chain of discrete slides.
-export const HOLD_THROTTLE_PAGE_MS = 260
+// Duration for the vertical page scroll tween. Long relative to the key
+// auto-repeat interval (~50-100ms) on purpose: while the user holds
+// Down/Up each new press interrupts the still-in-flight tween, so Blits
+// re-tweens from the current visual position with the same easing curve.
+// The visible motion during a hold is a chain of overlapping tweens whose
+// eased slopes blend into one continuous glide; the full duration only
+// plays out on the last tween after the user releases, which is what
+// gives the scroll its unhurried "flowing" tail.
+export const SCROLL_TRANSITION_DURATION = 800
+
+// Easing curve for the vertical page scroll tween. Aggressive front-loaded
+// ease-out: steep slope at t=0 so each newly-triggered tween immediately
+// picks up visible velocity, then decelerates smoothly. This is what
+// produces continuously-varying velocity within each tween — a linear or
+// symmetric ease reads as mechanical because velocity is constant in the
+// middle, whereas this curve is always changing pace.
+export const SCROLL_TRANSITION_EASING = 'cubic-bezier(0.22, 1, 0.36, 1)'
 
 // Shared easing curves used across focus, scroll and hero transitions.
 // smooth uses ease-in-out — same closed-form cost as ease-out but the
