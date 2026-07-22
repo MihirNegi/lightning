@@ -5,16 +5,22 @@ import { getPageScrollOffset } from '../helpers/scroll.js'
 import HeroCarousel from './HeroCarousel.js'
 import ContentRail from './ContentRail.js'
 
-// Exponential smoothing half-life in ms — the time it takes scrollActual
-// to cover half the remaining distance to scrollTarget. Shorter = snappier
-// and tracks input more tightly (feels closer to linear); longer = more
-// floaty and eased. 80ms gives a clear ease-out curve at each rail while
-// keeping the average velocity fast enough that a held Down/Up reads as
-// one continuous glide instead of a chain of discrete slides. Unlike the
-// previous constant-velocity model, motion eases toward every target
-// rather than arriving at fixed speed and snapping — this is what
-// produces the "flowing" feel.
-const SCROLL_HALF_LIFE_MS = 80
+// Peak scroll velocity in px/ms. Caps how fast scrollActual can advance
+// per frame so held-key scrolling cruises at exactly one rail per
+// HOLD_THROTTLE_PAGE_MS — matching the input cadence and the previous
+// constant-velocity model. Without this cap, exponential smoothing alone
+// would fire scrollActual toward the target at a peak velocity roughly
+// 2x the desired cruise speed (because the eased step is proportional to
+// remaining distance), which reads as the first half of the slide being
+// too fast.
+const MAX_SCROLL_VELOCITY_PX_PER_MS = RAIL_HEIGHT / HOLD_THROTTLE_PAGE_MS
+
+// Exponential smoothing half-life in ms. Only takes over from the velocity
+// cap once the eased step becomes smaller than the cap — i.e. near the
+// target. Controls how the tail of the motion eases out after the user
+// releases: shorter = snappier arrival, longer = softer landing. 60ms
+// gives a clear ease-out without feeling floaty.
+const SCROLL_HALF_LIFE_MS = 60
 
 // Distance (px) below which scrollActual snaps to scrollTarget and the
 // RAF loop halts. Exponential smoothing asymptotes toward the target, so
@@ -33,15 +39,17 @@ const SCROLL_SNAP_EPSILON_PX = 0.5
 //
 // Scroll implementation: a manual requestAnimationFrame loop (see
 // scrollTick + ensureScrollLoopRunning) advances scrollActual toward
-// scrollTarget using exponential smoothing (asymptotic lerp with a fixed
-// half-life). Input handlers update scrollTarget; the RAF loop reads the
+// scrollTarget using a hybrid of a velocity cap and exponential smoothing.
+// Far from the target the velocity cap dominates, producing linear cruise
+// at the same speed as the previous constant-velocity model — so held
+// Down/Up feels consistent and no faster than before. Near the target the
+// exponential ease dominates, producing a soft landing rather than a
+// snap. Input handlers update scrollTarget; the RAF loop reads the
 // current target each tick, so a new press mid-motion just extends the
-// target — no restart, no velocity reset, and the motion naturally eases
-// as it approaches. This gives a flowing feel during held Down/Up and a
-// clean ease-out at the end. Better than a Blits .transition, which
-// restarts from the current position over a fixed duration each time the
-// target changes and produces subtle velocity hitches at input-timing
-// boundaries.
+// target — no restart, no velocity reset. Better than a Blits
+// .transition, which restarts from the current position over a fixed
+// duration each time the target changes and produces subtle velocity
+// hitches at input-timing boundaries.
 //
 // Template pixel values are literals (Blits templates cannot interpolate JS).
 // x=64 matches CONTENT_PADDING_X; 880 matches HERO_HEIGHT; 410 = RAIL_HEIGHT.
@@ -171,17 +179,17 @@ export default Blits.Component('PageContainer', {
       this.lastFrameTime = performance.now()
       this.rafHandle = requestAnimationFrame((now) => this.scrollTick(now))
     },
-    // Per-frame step. Advances scrollActual toward scrollTarget by a
-    // fraction of the remaining distance chosen so half the gap closes
-    // every SCROLL_HALF_LIFE_MS. Formula: factor = 1 - 0.5^(dt/H). This
-    // is frame-rate independent (correct behaviour whether the browser
-    // hits 60fps or drops to 30) and produces a natural ease-out toward
-    // every target. Reads target and current position fresh each tick,
-    // so new presses arriving during motion just extend the target —
-    // motion continues seamlessly with no velocity reset. Snaps and
-    // stops the loop once the remaining gap falls below the snap
-    // epsilon, so idle pages do not consume RAF slots on the
-    // asymptotic tail.
+    // Per-frame step. Computes two candidate step sizes and takes the
+    // smaller: an exponential ease (half the gap closes every
+    // SCROLL_HALF_LIFE_MS) and a velocity cap (MAX_SCROLL_VELOCITY_PX_PER_MS
+    // * elapsed-ms). Far from the target the cap wins, giving linear
+    // cruise at the desired input cadence; near the target the ease wins,
+    // giving a soft landing. Both branches are frame-rate independent.
+    // Reads target and current position fresh each tick, so new presses
+    // arriving during motion just extend the target — motion continues
+    // seamlessly with no velocity reset. Snaps and stops the loop once
+    // the remaining gap falls below the snap epsilon, so idle pages do
+    // not consume RAF slots on the asymptotic tail.
     scrollTick(now) {
       const dt = now - this.lastFrameTime
       this.lastFrameTime = now
@@ -191,8 +199,10 @@ export default Blits.Component('PageContainer', {
         this.rafHandle = 0
         return
       }
-      const factor = 1 - Math.pow(0.5, dt / SCROLL_HALF_LIFE_MS)
-      this.scrollActual += remaining * factor
+      const easedStep = remaining * (1 - Math.pow(0.5, dt / SCROLL_HALF_LIFE_MS))
+      const maxStep = MAX_SCROLL_VELOCITY_PX_PER_MS * dt
+      const step = Math.abs(easedStep) > maxStep ? Math.sign(easedStep) * maxStep : easedStep
+      this.scrollActual += step
       this.rafHandle = requestAnimationFrame((next) => this.scrollTick(next))
     },
     // Returns true if enough time has passed since the last accepted press.
