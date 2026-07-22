@@ -102,6 +102,13 @@ export default Blits.Component('Navbar', {
     enter() {
       this.$emit('nav:focus-content')
     },
+    back() {
+      // Top-level back: user is at the root of the app (focus is on the
+      // Navbar), so back exits the app. Handled in App.js so the exit path
+      // is centralised — page-level back is already handled per-page via
+      // nav:focus-navbar.
+      this.$emit('app:exit')
+    },
   },
   methods: {
     // Navigate to the tab at the given index and highlight it.

@@ -36,6 +36,9 @@ export default Blits.Application({
       // When a page presses Up on its top row, it emits this event to
       // return focus to the Navbar (pages that support this will be built in step 4).
       this.$listen('nav:focus-navbar', () => this.focusNavbar())
+      // Navbar emits this when back is pressed while it holds focus — the
+      // user is at the app root and wants to leave.
+      this.$listen('app:exit', () => this.exitApp())
       this.focusNavbar()
     },
   },
@@ -44,6 +47,23 @@ export default Blits.Application({
     focusNavbar() {
       const navbar = this.$select('navbar')
       if (navbar) navbar.$focus()
+    },
+    // Close the TV application. Tries platform-native exit APIs first
+    // (Tizen on Samsung, webOS on LG) and falls back to window.close(),
+    // which on browsers only succeeds if the window was opened by script.
+    // globalThis is used so ESLint doesn't flag the platform globals as
+    // undefined in dev, where they legitimately don't exist.
+    exitApp() {
+      const g = globalThis
+      if (g.tizen && g.tizen.application) {
+        g.tizen.application.getCurrentApplication().exit()
+        return
+      }
+      if (g.webOS && g.webOS.platformBack) {
+        g.webOS.platformBack()
+        return
+      }
+      if (g.close) g.close()
     },
   },
 })
