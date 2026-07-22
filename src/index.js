@@ -13,11 +13,11 @@ Blits.Launch(App, 'app', {
   // consistent. Consistent 30fps looks noticeably smoother than
   // jittery-almost-60fps for a slow scroll.
   maxFPS: 30,
-  // Reduce internal render resolution / texture sampling quality. On TV
-  // (viewed from ~10 feet) this is not visually distinguishable, but it
-  // materially reduces per-frame GPU work — the fill-rate savings are
-  // most visible mid-scroll when a lot of textured quads are in flight.
-  renderQuality: 'low',
+  // Full render resolution and texture sampling. 'low' trades sharpness for
+  // per-frame GPU work (invisible at TV viewing distance, visible on desktop
+  // dev). Kept at 'high' here — if scroll frame budget is exceeded on real
+  // TV hardware, drop this to 'low' before touching anything else.
+  renderQuality: 'high',
   // Smaller offscreen render margin. Blits still rasterises nodes within
   // this many px outside the visible viewport (to hide edge pop-in when
   // scrolling), but a smaller value means fewer just-offscreen rails get
