@@ -15,7 +15,7 @@ export const TRANSITIONS_ENABLED = true
 export const DURATION = {
   fast: 200,
   base: 150,
-  slow: 400,
+  slow: 260,
   hero: 800,
 }
 
@@ -33,16 +33,12 @@ export const HOLD_THROTTLE_MS = 250
 // during hold with no target-vs-motion drift.
 export const HOLD_THROTTLE_RAIL_MS = 150
 
-// Longer throttle for vertical page scrolling. Sized to leave a clear dwell
-// window between successive scrolls when the user holds Down/Up: 400ms of
-// scroll animation + ~300ms of stillness before the next press is accepted.
-// The dwell IS the reading pause between rails — vertical navigation is
-// discrete rail-to-rail (unlike horizontal, which is continuous flow
-// through cards), so the user wants a beat between rows to read titles.
-// Removing the dwell (400ms/400ms linear) made scroll feel "lagged"
-// because rails whipped past faster than the user's eye could focus on
-// each one.
-export const HOLD_THROTTLE_PAGE_MS = 700
+// Throttle for vertical page scrolling. Matched close to DURATION.slow so
+// held Down/Up flows one rail into the next without a dead pause between
+// scrolls — the animation itself still tweens (260ms) rather than snapping,
+// which preserves visual continuity while removing the discrete stop-and-go
+// feel of a longer throttle.
+export const HOLD_THROTTLE_PAGE_MS = 300
 
 // Shared easing curves used across focus, scroll and hero transitions.
 // smooth uses ease-in-out — same closed-form cost as ease-out but the
