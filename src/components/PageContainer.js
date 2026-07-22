@@ -5,22 +5,22 @@ import { getPageScrollOffset } from '../helpers/scroll.js'
 import HeroCarousel from './HeroCarousel.js'
 import ContentRail from './ContentRail.js'
 
-// Time to slide one rail into position, in ms. Sets the vertical scroll
-// cadence — held-key scroll produces one rail of motion per this interval.
-// Matched exactly to HOLD_THROTTLE_PAGE_MS in helpers/animations.js so
-// held-input feeds new targets to the RAF loop at exactly the rate it
-// moves toward them, producing truly continuous motion during a held
-// Down/Up press.
-const TIME_PER_RAIL_MS = 260
+// Exponential smoothing half-life in ms — the time it takes scrollActual
+// to cover half the remaining distance to scrollTarget. Shorter = snappier
+// and tracks input more tightly (feels closer to linear); longer = more
+// floaty and eased. 80ms gives a clear ease-out curve at each rail while
+// keeping the average velocity fast enough that a held Down/Up reads as
+// one continuous glide instead of a chain of discrete slides. Unlike the
+// previous constant-velocity model, motion eases toward every target
+// rather than arriving at fixed speed and snapping — this is what
+// produces the "flowing" feel.
+const SCROLL_HALF_LIFE_MS = 80
 
-// Pixel velocity implied by TIME_PER_RAIL_MS. The RAF scroll loop advances
-// scrollActual toward scrollTarget by this * elapsed-ms every frame,
-// producing constant-velocity motion regardless of when inputs actually
-// arrive. This is why held-scroll feels smooth — the motion doesn't
-// restart from zero velocity every time a new press changes the target,
-// unlike a declarative transition. Mirrors the horizontal ContentRail
-// pattern.
-const SCROLL_VELOCITY_PX_PER_MS = RAIL_HEIGHT / TIME_PER_RAIL_MS
+// Distance (px) below which scrollActual snaps to scrollTarget and the
+// RAF loop halts. Exponential smoothing asymptotes toward the target, so
+// without a snap threshold the loop would spin forever moving sub-pixel
+// amounts.
+const SCROLL_SNAP_EPSILON_PX = 0.5
 
 // Generic page layout: hero at the top, then a vertical stack of content rails.
 // Handles Up/Down navigation between sections and remembers which section was
@@ -32,13 +32,16 @@ const SCROLL_VELOCITY_PX_PER_MS = RAIL_HEIGHT / TIME_PER_RAIL_MS
 // slower first paint but removes that spike from every subsequent scroll.
 //
 // Scroll implementation: a manual requestAnimationFrame loop (see
-// scrollTick + ensureScrollLoopRunning) moves scrollActual toward
-// scrollTarget at constant velocity. Input handlers update scrollTarget;
-// the RAF loop picks up the new target on its next tick without a velocity
-// reset. This gives truly continuous motion during a held Down/Up — better
-// than a Blits .transition, which restarts from the current position over
-// a fixed duration each time the target changes and produces subtle
-// velocity hitches at input-timing boundaries. Same pattern as ContentRail.
+// scrollTick + ensureScrollLoopRunning) advances scrollActual toward
+// scrollTarget using exponential smoothing (asymptotic lerp with a fixed
+// half-life). Input handlers update scrollTarget; the RAF loop reads the
+// current target each tick, so a new press mid-motion just extends the
+// target — no restart, no velocity reset, and the motion naturally eases
+// as it approaches. This gives a flowing feel during held Down/Up and a
+// clean ease-out at the end. Better than a Blits .transition, which
+// restarts from the current position over a fixed duration each time the
+// target changes and produces subtle velocity hitches at input-timing
+// boundaries.
 //
 // Template pixel values are literals (Blits templates cannot interpolate JS).
 // x=64 matches CONTENT_PADDING_X; 880 matches HERO_HEIGHT; 410 = RAIL_HEIGHT.
@@ -168,32 +171,36 @@ export default Blits.Component('PageContainer', {
       this.lastFrameTime = performance.now()
       this.rafHandle = requestAnimationFrame((now) => this.scrollTick(now))
     },
-    // Per-frame step. Moves scrollActual toward scrollTarget by
-    // SCROLL_VELOCITY_PX_PER_MS * elapsed-ms. Reads target and current
-    // position fresh each tick, so new presses arriving during motion
-    // just extend the target — constant-velocity motion continues
-    // seamlessly. Stops (returns without rescheduling) once the target
-    // is reached, so idle pages do not consume rAF slots.
+    // Per-frame step. Advances scrollActual toward scrollTarget by a
+    // fraction of the remaining distance chosen so half the gap closes
+    // every SCROLL_HALF_LIFE_MS. Formula: factor = 1 - 0.5^(dt/H). This
+    // is frame-rate independent (correct behaviour whether the browser
+    // hits 60fps or drops to 30) and produces a natural ease-out toward
+    // every target. Reads target and current position fresh each tick,
+    // so new presses arriving during motion just extend the target —
+    // motion continues seamlessly with no velocity reset. Snaps and
+    // stops the loop once the remaining gap falls below the snap
+    // epsilon, so idle pages do not consume RAF slots on the
+    // asymptotic tail.
     scrollTick(now) {
       const dt = now - this.lastFrameTime
       this.lastFrameTime = now
       const remaining = this.scrollTarget - this.scrollActual
-      const step = SCROLL_VELOCITY_PX_PER_MS * dt
-      if (Math.abs(remaining) <= step) {
-        // Snap to target and stop the loop.
+      if (Math.abs(remaining) <= SCROLL_SNAP_EPSILON_PX) {
         this.scrollActual = this.scrollTarget
         this.rafHandle = 0
         return
       }
-      this.scrollActual += Math.sign(remaining) * step
+      const factor = 1 - Math.pow(0.5, dt / SCROLL_HALF_LIFE_MS)
+      this.scrollActual += remaining * factor
       this.rafHandle = requestAnimationFrame((next) => this.scrollTick(next))
     },
     // Returns true if enough time has passed since the last accepted press.
     // Records the current time so the next call is throttled. Prevents key
     // auto-repeat from queuing dozens of section changes on a single hold.
-    // Matched to TIME_PER_RAIL_MS via HOLD_THROTTLE_PAGE_MS so held-key input
-    // produces exactly one accepted press per rail-time interval — feeding
-    // the RAF loop targets at the same rate it moves.
+    // HOLD_THROTTLE_PAGE_MS sets the desired cadence for held-key scrolling
+    // (one rail advanced per this interval); the exponential smoothing in
+    // scrollTick handles the actual motion between each accepted target.
     acceptHoldInput() {
       const now = Date.now()
       if (now - this.lastInputAt < HOLD_THROTTLE_PAGE_MS) return false
