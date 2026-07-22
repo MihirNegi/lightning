@@ -33,12 +33,14 @@ export const HOLD_THROTTLE_MS = 250
 // during hold with no target-vs-motion drift.
 export const HOLD_THROTTLE_RAIL_MS = 150
 
-// Throttle for vertical page scrolling. Matched close to DURATION.slow so
-// held Down/Up flows one rail into the next without a dead pause between
-// scrolls — the animation itself still tweens (260ms) rather than snapping,
-// which preserves visual continuity while removing the discrete stop-and-go
-// feel of a longer throttle.
-export const HOLD_THROTTLE_PAGE_MS = 300
+// Throttle for vertical page scrolling. Matched exactly to PageContainer's
+// TIME_PER_RAIL_MS (260ms) so held-key auto-repeat produces at most one
+// accepted press per rail-time interval. The RAF loop in PageContainer moves
+// at constant velocity implied by that same TIME_PER_RAIL_MS, so throttle =
+// rail-time gives exactly one rail of motion per accepted press — smooth
+// continuous scroll during hold with no target-vs-motion drift. Mirrors the
+// horizontal ContentRail pattern.
+export const HOLD_THROTTLE_PAGE_MS = 260
 
 // Shared easing curves used across focus, scroll and hero transitions.
 // smooth uses ease-in-out — same closed-form cost as ease-out but the
