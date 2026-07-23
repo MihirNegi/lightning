@@ -2,12 +2,15 @@ import Blits from '@lightningjs/blits'
 import { DURATION, EASING, transition } from '../helpers/animations.js'
 import { CARD_W_PORTRAIT, CARD_H_PORTRAIT } from '../constants/layout.js'
 
-// A single poster card. Renders a dark placeholder immediately and fades the
-// poster image in on top over ~200ms. The placeholder makes the initial
-// state look intentional (like Netflix/Hotstar's dark card slots) rather
-// than a bright white flash, and the fade cushions the moment the network-
-// fetched image actually lands from the Picsum API — so the user sees a
-// smooth "content settling in" rather than a hard pop when latency varies.
+// A single poster card. Renders a slate placeholder immediately and fades the
+// poster image in on top over ~200ms. The placeholder needs enough contrast
+// against the #0B0B0B page background (5%) to read as a distinct card shape
+// while images are still fetching — Picsum on a TV connection can take a
+// couple of seconds per card, and if the placeholder blends into the page
+// the rail LOOKS empty on the right (breaking the cutout-at-edge signal
+// which relies on visible cards flowing past the clip boundary). #262626
+// sits at ~15% brightness — visibly a card, still muted enough that the
+// image fade-in reads as content settling in rather than a hard pop.
 //
 // Focus indication is NOT drawn here — the parent ContentRail draws a
 // single static frame at the focus slot, and cards slide underneath it.
@@ -22,7 +25,7 @@ import { CARD_W_PORTRAIT, CARD_H_PORTRAIT } from '../constants/layout.js'
 export default Blits.Component('PosterCard', {
   template: `
     <Element :w="$cardW" :h="$cardH">
-      <Element :w="$cardW" :h="$imageH" color="#1A1A1A" />
+      <Element :w="$cardW" :h="$imageH" color="#262626" />
       <Element
         :w="$cardW"
         :h="$imageH"
