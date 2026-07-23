@@ -36,8 +36,14 @@ export const RAIL_HEIGHT = RAIL_HEIGHT_PORTRAIT
 // Hero banner at the top of each page
 export const HERO_HEIGHT = 880
 
-// Visible width available for a rail's cards, after subtracting side padding
-export const RAIL_VISIBLE_WIDTH = STAGE_W - CONTENT_PADDING_X * 2
+// Visible width available for a rail's cards. Only the left side has an
+// explicit CONTENT_PADDING_X gap (where the rail title sits); the right
+// edge runs all the way to the screen boundary so trailing cards get cut
+// off there rather than fading out inside a right-side padding block. This
+// matches the Rust reference — cards flow to the visible edge of the
+// canvas — and gives the "there is more content beyond this" cue that a
+// centred/padded rail cannot.
+export const RAIL_VISIBLE_WIDTH = STAGE_W - CONTENT_PADDING_X
 
 // Extra breathing room between the fixed navbar and the topmost visible
 // content when the hero is absent. Matches the NAVBAR_GAP used by the

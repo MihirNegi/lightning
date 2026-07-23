@@ -57,13 +57,15 @@ color="#FFFFFF"
       focusIndex: 0,
       // Timestamp of the last accepted directional press, used for hold-throttling.
       lastInputAt: 0,
-      // Live-updating jank readout, e.g. "60 fps   16.7 ms   max 42.1   3 jank   GL2 60Hz".
-      // The max + jank fields matter more than the average — a fine fps
-      // number with a high max and non-zero jank count is exactly the
-      // "smooth on average but visibly stuttery" case we're diagnosing.
-      // Suffix shows the detected renderer + rAF cap so we can tell if the
-      // browser is throttling frames. Refreshed ~3x/sec by the FPS meter.
-      fpsLabel: '-- fps   --.- ms   max --.-   -- jank   ...',
+      // Live-updating jank readout, e.g. "60 fps   16.7 ms   0 jank   work 0.3".
+      // work is average vsync overrun per frame in the sample window (0 =
+      // perfect; rising values mean the main thread is chewing budget).
+      // The work + jank fields matter more than the average fps — fine
+      // fps with high work or non-zero jank is the "smooth on average
+      // but visibly stuttery" case we're diagnosing. The full breakdown
+      // (including max frame time) lives on the /fps diagnostic page;
+      // this compact readout keeps only what fits in the navbar strip.
+      fpsLabel: '-- fps   --.- ms   -- jank   work --.-',
     }
   },
   hooks: {
@@ -72,8 +74,18 @@ color="#FFFFFF"
       // Start the rAF-based meter and remember the cancel function so we can
       // stop it in destroy(). Blits state is reactive, so assigning fpsLabel
       // re-renders the readout.
+      // Build the label from data fields directly rather than using
+      // data.label — the shared meter's label includes a max-frame field
+      // that the diagnostic /fps page wants but is noise in the compact
+      // navbar strip. Order: fps -> avg frame -> jank -> work, roughly
+      // "how fast is it, how long per frame, how many dropped, how much
+      // budget was stolen".
       this.stopFps = startFpsMeter((data) => {
-        this.fpsLabel = data.label
+        this.fpsLabel =
+          `${data.fps} fps   ` +
+          `${data.avgFrameMs.toFixed(1)} ms   ` +
+          `${data.jankCount} jank   ` +
+          `work ${data.workMs.toFixed(1)}`
       })
     },
     focus() {

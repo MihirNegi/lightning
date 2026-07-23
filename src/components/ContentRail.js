@@ -5,15 +5,15 @@ import { getRailScrollOffset } from '../helpers/scroll.js'
 import PosterCard from './PosterCard.js'
 
 // Lazy-mount window: how many cards to render around the current selection.
-// ~7 cards fit in the visible clipping window at portrait width, fewer at
-// landscape width — the window is generous enough for both. BEFORE covers
-// scroll-back and AFTER buffers forward scrolling. Cards outside the window
-// are unmounted and their image textures freed — keeps GPU fill rate low
-// on TV hardware. Tuned tight: BEFORE=2 (one card behind for smooth back-
-// scroll), AFTER=5 (visible cards + small forward buffer). Fewer mounted
-// cards = fewer textured quads drawn per frame.
+// The visible clip runs to the screen edge (RAIL_VISIBLE_WIDTH), so portrait
+// rails show ~6.5 cards and landscape ~3.8. AFTER covers everything to the
+// right of focus (focus + AFTER cards must fill the clip so no gap appears
+// at the right edge) plus a small forward buffer for a pressed key that
+// arrives before scroll settles. BEFORE keeps a card mounted behind the
+// focus for smooth back-scroll. Cards outside the window are unmounted and
+// their image textures freed — keeps GPU fill rate low on TV hardware.
 const WINDOW_BEFORE = 2
-const WINDOW_AFTER = 5
+const WINDOW_AFTER = 7
 
 // Card layout offsets inside the clip. Card sits 8px below the clip top and
 // 12px inside the left edge; the focus frame is offset by (5, 5) less than

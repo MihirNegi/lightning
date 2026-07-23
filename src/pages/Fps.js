@@ -58,8 +58,14 @@ export default Blits.Component('Fps', {
     ready() {
       this.stopFps = startFpsMeter((data) => {
         this.fps = String(data.fps)
+        // work ms = average vsync overrun per frame in the sample window;
+        // 0 is perfect (frames land on vsync), rising values mean the main
+        // thread is chewing frame budget. Placed after avg frame time so
+        // reading left-to-right gives throughput -> where budget went ->
+        // worst spike -> dropped-frame count.
         this.details =
           `${data.avgFrameMs.toFixed(1)} ms/frame   ` +
+          `work ${data.workMs.toFixed(1)} ms   ` +
           `max ${data.maxDt.toFixed(1)} ms   ` +
           `${data.jankCount} jank`
       })

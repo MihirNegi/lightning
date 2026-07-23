@@ -85,6 +85,13 @@ export default Blits.Component('HeroCarousel', {
       // slide enters from the right; old exits to the left). -1 = went left.
       // Autoplay always uses +1. Ignored while prevIndex === currentIndex.
       direction: 1,
+      // Per-slide positioning array bound to the template's :for. Must be a
+      // state field (not a computed) because Blits ':for' effects only re-fire
+      // when the exact array-name state key changes — a computed here would
+      // evaluate once at mount and never again, freezing every slide at its
+      // initial slotX. rebuildSlideSlots() assigns a new array reference into
+      // this state on every navigation, which triggers the reactive :for.
+      slidesWithSlot: [],
       // Scale applied to the Watch Now button — used for the press bounce.
       ctaScale: 1,
       // Interval id for the autoplay rotation, so we can cancel/restart it.
@@ -94,6 +101,13 @@ export default Blits.Component('HeroCarousel', {
     }
   },
   hooks: {
+    // Build the initial slide-slot array so the first paint has correct
+    // positions (current at x=0, others waiting off-screen at +STAGE_W).
+    // Cannot be done in state() because state() runs before props are
+    // populated — this.slides would be [] at that point.
+    init() {
+      this.rebuildSlideSlots()
+    },
     // Start rotating slides only while the hero actually has focus. Rotating
     // in the background costs frame budget (the slide transition is the biggest
     // per-tick expense of this page) with no user benefit — nobody sees the
@@ -110,36 +124,6 @@ export default Blits.Component('HeroCarousel', {
     },
     destroy() {
       this.stopAutoplay()
-    },
-  },
-  computed: {
-    // Per-slide target position + transition duration. Recomputes when
-    // currentIndex, prevIndex, or direction change; Blits reactively pushes
-    // the new slotX/slotDuration into each mounted HeroSlide, and the child's
-    // :x.transition binding tweens.
-    //
-    // Non-current, non-prev slides get duration 0 so they snap to the current
-    // waiting position (direction * STAGE_W) — without this, changing direction
-    // between presses would sweep resting slides across the visible stage.
-    slidesWithSlot() {
-      const inFlight = this.prevIndex !== this.currentIndex
-      return this.slides.map((slide, i) => {
-        if (i === this.currentIndex) {
-          return { ...slide, slotX: 0, slotDuration: DURATION.hero }
-        }
-        if (inFlight && i === this.prevIndex) {
-          return {
-            ...slide,
-            slotX: -this.direction * STAGE_W,
-            slotDuration: DURATION.hero,
-          }
-        }
-        return {
-          ...slide,
-          slotX: this.direction * STAGE_W,
-          slotDuration: 0,
-        }
-      })
     },
   },
   input: {
@@ -182,12 +166,43 @@ export default Blits.Component('HeroCarousel', {
     // Jump to a specific slide index with a given direction (+1 = came from
     // the left / entered from the right, -1 = the reverse). Resets the
     // autoplay dwell timer so a manually-chosen slide gets the full interval
-    // before rotating away.
+    // before rotating away. rebuildSlideSlots() runs AFTER state has moved
+    // to the new index so slidesWithSlot picks up the fresh currentIndex /
+    // prevIndex / direction values.
     goToSlide(index, direction) {
       this.prevIndex = this.currentIndex
       this.currentIndex = index
       this.direction = direction
+      this.rebuildSlideSlots()
       this.startAutoplay()
+    },
+    // Build a fresh slidesWithSlot array from the current currentIndex /
+    // prevIndex / direction. Non-current, non-prev slides snap (duration 0)
+    // to the waiting side offscreen; the current + previous slides get the
+    // full hero duration so their :x.transition on HeroSlide tweens visibly.
+    // Assigning a new array reference is what triggers Blits' :for effect —
+    // a computed here would evaluate once at mount and never fire again
+    // (Blits :for effects are keyed to a single state name; they don't
+    // observe reads inside a computed's body).
+    rebuildSlideSlots() {
+      const inFlight = this.prevIndex !== this.currentIndex
+      this.slidesWithSlot = this.slides.map((slide, i) => {
+        if (i === this.currentIndex) {
+          return { ...slide, slotX: 0, slotDuration: DURATION.hero }
+        }
+        if (inFlight && i === this.prevIndex) {
+          return {
+            ...slide,
+            slotX: -this.direction * STAGE_W,
+            slotDuration: DURATION.hero,
+          }
+        }
+        return {
+          ...slide,
+          slotX: this.direction * STAGE_W,
+          slotDuration: 0,
+        }
+      })
     },
     // (Re)start the autoplay interval. Called when the hero gains focus and
     // whenever the user manually changes slides (to reset the dwell timer).
