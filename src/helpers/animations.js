@@ -5,14 +5,11 @@
 // re-diagnose if scroll ever feels sluggish again.
 export const TRANSITIONS_ENABLED = true
 
-// Shared animation timing constants so every component animates with the same rhythm.
-// base is the fallback duration for the transition() helper below. The
-// horizontal rail scroll no longer uses this — ContentRail drives its own
-// RAF-based continuous-velocity scroll loop with TIME_PER_CARD_MS defined
-// locally. slow (page vertical scroll) can be longer for a cinematic feel
-// because we pre-render off-screen rails via index.js:viewportMargin so
-// entering rails don't cost a first-draw spike per frame during the scroll.
-//wow
+// Shared animation timing constants for Blits declarative transitions
+// (:alpha.transition, :scale.transition, and the hero slide). The two
+// scroll axes do NOT use these values — ContentRail (horizontal) and
+// PageContainer (vertical) drive their own rAF loops with easeStep(), so
+// their timing is set by RAIL_SCROLL_TAU_MS and PAGE_SCROLL_TAU_MS below.
 export const DURATION = {
   fast: 200,
   base: 150,
@@ -26,31 +23,44 @@ export const DURATION = {
 // instead the user sees the focus move one step at a time.
 export const HOLD_THROTTLE_MS = 250
 
-// Rail-specific throttle. Matched exactly to ContentRail's TIME_PER_CARD_MS
-// (150ms) so held-key auto-repeat produces at most one accepted press per
-// card-time interval. The RAF loop in ContentRail moves at constant velocity
-// implied by that same TIME_PER_CARD_MS, so throttle = card-time gives
-// exactly one card of motion per accepted press — smooth continuous scroll
-// during hold with no target-vs-motion drift.
+// Rail-specific throttle. Under sustained hold, ContentRail accepts one
+// Left/Right press per 150ms; each press advances scrollTarget by one card
+// width, and the exponential-smoothing rAF loop eases scrollActual toward
+// that target with velocity proportional to remaining distance. 150ms is
+// tuned so held scrolling feels continuous (targets keep just enough ahead
+// of the ease that motion never stalls) without racing past cards the eye
+// cannot register.
 export const HOLD_THROTTLE_RAIL_MS = 150
 
-// Duration for the vertical page scroll tween. Long relative to the key
-// auto-repeat interval (~50-100ms) on purpose: while the user holds
-// Down/Up each new press interrupts the still-in-flight tween, so Blits
-// re-tweens from the current visual position with the same easing curve.
-// The visible motion during a hold is a chain of overlapping tweens whose
-// eased slopes blend into one continuous glide; the full duration only
-// plays out on the last tween after the user releases, which is what
-// gives the scroll its unhurried "flowing" tail.
-export const SCROLL_TRANSITION_DURATION = 800
+// Exponential-smoothing time constants (in milliseconds) for the rAF scroll
+// loops in ContentRail (horizontal) and PageContainer (vertical). Each loop
+// calls easeStep() every frame; TAU controls the perceived "weight".
+// Smaller TAU = snappier. Horizontal uses a smaller value because per-press
+// distance is a single card width; vertical uses a slightly larger value
+// because per-press distance is a whole rail (or hero) height, so a heavier
+// feel reads as intentional rather than jittery.
+export const RAIL_SCROLL_TAU_MS = 90
+export const PAGE_SCROLL_TAU_MS = 130
 
-// Easing curve for the vertical page scroll tween. Aggressive front-loaded
-// ease-out: steep slope at t=0 so each newly-triggered tween immediately
-// picks up visible velocity, then decelerates smoothly. This is what
-// produces continuously-varying velocity within each tween — a linear or
-// symmetric ease reads as mechanical because velocity is constant in the
-// middle, whereas this curve is always changing pace.
-export const SCROLL_TRANSITION_EASING = 'cubic-bezier(0.22, 1, 0.36, 1)'
+// Distance from target below which an rAF ease loop snaps and cancels
+// itself. Exponential smoothing asymptotes — without a threshold the loop
+// would run forever chasing sub-pixel differences. 0.5 px is invisible at
+// TV viewing distance and small enough that the snap isn't perceptible.
+export const SETTLE_PX = 0.5
+
+// One step of exponential smoothing. Given a current value, a target, and
+// the real elapsed frame time in ms, returns the new value one frame closer
+// to the target. Frame-rate independent (uses real dt), never overshoots,
+// and — critically for TV UX — velocity is always proportional to distance
+// remaining. So when a new press retargets mid-motion, the next frame just
+// continues from the current position with the new distance; there is no
+// tween restart, no fresh duration budget, and no velocity discontinuity
+// at the moment of retargeting. Repeated presses under hold blend into one
+// continuous glide with a natural ease-out tail on release.
+export function easeStep(current, target, dtMs, tauMs = RAIL_SCROLL_TAU_MS) {
+  const k = 1 - Math.exp(-dtMs / tauMs)
+  return current + (target - current) * k
+}
 
 // Shared easing curves used across focus, scroll and hero transitions.
 // smooth uses ease-in-out — same closed-form cost as ease-out but the

@@ -1,6 +1,6 @@
 import Blits from '@lightningjs/blits'
 import { CARD_W, CARD_GAP } from '../constants/layout.js'
-import { HOLD_THROTTLE_RAIL_MS } from '../helpers/animations.js'
+import { HOLD_THROTTLE_RAIL_MS, SETTLE_PX, easeStep } from '../helpers/animations.js'
 import { getRailScrollOffset } from '../helpers/scroll.js'
 import PosterCard from './PosterCard.js'
 
@@ -17,32 +17,21 @@ const WINDOW_AFTER = 5
 // Horizontal step per card slot: card width + inter-card gap.
 const CARD_STEP = CARD_W + CARD_GAP
 
-// Time to slide one card into position, in ms. Sets the horizontal scroll
-// cadence — held-key scroll produces one card of motion per this interval.
-// 150ms feels responsive on a TV screen at viewing distance while being
-// long enough that the eye can track the ribbon of cards flowing past.
-const TIME_PER_CARD_MS = 150
-
-// Pixel velocity implied by TIME_PER_CARD_MS. The RAF scroll loop advances
-// scrollActual toward scrollTarget by this * elapsed-ms every frame,
-// producing constant-velocity motion regardless of when inputs actually
-// arrive. This is why the scroll feels smooth even under noisy key auto-
-// repeat timing — the motion doesn't restart from zero velocity every
-// time a new press changes the target, unlike a declarative transition.
-const SCROLL_VELOCITY_PX_PER_MS = CARD_STEP / TIME_PER_CARD_MS
-
 // Horizontally scrolling rail of poster cards. Owns real keyboard focus:
 // Left/Right moves the selected card, and the previously selected card is
 // remembered while the component instance is alive (via router keepAlive).
 //
 // Scroll implementation: a manual requestAnimationFrame loop (see
 // scrollTick + ensureScrollLoopRunning) moves scrollActual toward
-// scrollTarget at constant velocity. Input handlers update scrollTarget;
-// the RAF loop picks up the new target on its next tick without a velocity
-// reset. This gives truly continuous motion during a held scroll — better
-// than a Blits .transition, which restarts from the current position over
-// a fixed duration each time the target changes and produces subtle velocity
-// hitches at input-timing boundaries.
+// scrollTarget using exponential smoothing (easeStep). Input handlers
+// update scrollTarget; the RAF loop picks up the new target on its next
+// tick with velocity naturally proportional to remaining distance — so a
+// press mid-motion just extends the target and the glide continues with
+// no restart, no fresh duration budget, no velocity discontinuity. On
+// release, the tail eases out on its own. Under sustained held-key
+// scrolling there is a small steady-state lag between animation position
+// and target (~0.6 cards); this reads as a natural "weight" and is the
+// same behaviour used across the vertical page scroll for consistency.
 //
 // The focus indicator is drawn HERE as a single static frame at slot (7, 3)
 // inside the clipping window (i.e. wrapping the leftmost-visible card). The
@@ -198,24 +187,23 @@ export default Blits.Component('ContentRail', {
       this.lastFrameTime = performance.now()
       this.rafHandle = requestAnimationFrame((now) => this.scrollTick(now))
     },
-    // Per-frame step. Moves scrollActual toward scrollTarget by
-    // SCROLL_VELOCITY_PX_PER_MS * elapsed-ms. Reads target and current
-    // position fresh each tick, so new presses arriving during motion
-    // just extend the target — constant-velocity motion continues
-    // seamlessly. Stops (returns without rescheduling) once the target
-    // is reached, so idle rails do not consume rAF slots.
+    // Per-frame step. Moves scrollActual toward scrollTarget with one call
+    // to easeStep — exponential smoothing whose step size is a fraction of
+    // the remaining distance, so velocity naturally decays as motion nears
+    // the target. Reads target fresh each tick, so a new press mid-motion
+    // just extends the target and the glide continues from wherever the
+    // animation currently is. Stops once |remaining| < SETTLE_PX so idle
+    // rails do not consume rAF slots chasing sub-pixel differences.
     scrollTick(now) {
       const dt = now - this.lastFrameTime
       this.lastFrameTime = now
       const remaining = this.scrollTarget - this.scrollActual
-      const step = SCROLL_VELOCITY_PX_PER_MS * dt
-      if (Math.abs(remaining) <= step) {
-        // Snap to target and stop the loop.
+      if (Math.abs(remaining) < SETTLE_PX) {
         this.scrollActual = this.scrollTarget
         this.rafHandle = 0
         return
       }
-      this.scrollActual += Math.sign(remaining) * step
+      this.scrollActual = easeStep(this.scrollActual, this.scrollTarget, dt)
       this.rafHandle = requestAnimationFrame((next) => this.scrollTick(next))
     },
     // Rebuild the windowed visibleItems slice around the current

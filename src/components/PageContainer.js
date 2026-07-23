@@ -1,6 +1,6 @@
 import Blits from '@lightningjs/blits'
 import { HERO_HEIGHT, RAIL_HEIGHT, NAVBAR_HEIGHT } from '../constants/layout.js'
-import { SCROLL_TRANSITION_DURATION, SCROLL_TRANSITION_EASING } from '../helpers/animations.js'
+import { PAGE_SCROLL_TAU_MS, SETTLE_PX, easeStep } from '../helpers/animations.js'
 import { getPageScrollOffset } from '../helpers/scroll.js'
 import HeroCarousel from './HeroCarousel.js'
 import ContentRail from './ContentRail.js'
@@ -27,13 +27,15 @@ const RAIL_VISIBLE_ROWS = 3
 // keeps the per-frame draw cost bounded regardless of how many rails the
 // page has.
 //
-// Scroll motion: a declarative Blits :y.transition binding on the outer
-// container. Each accepted press updates sectionIndex; scrollOffset
-// recomputes; scrollTransition re-emits with the new target, and Blits
-// interpolates the outer y toward it over SCROLL_TRANSITION_DURATION using
-// SCROLL_TRANSITION_EASING. When a new press arrives mid-tween Blits
-// interrupts and re-tweens from the current visual position, so held
-// Down/Up chains into one continuous glide with no velocity reset.
+// Scroll motion: a manual requestAnimationFrame loop (scrollTick +
+// ensureScrollLoopRunning) eases animY toward the target Y using
+// exponential smoothing (easeStep). Same technique the horizontal
+// ContentRail uses — one shared helper, one behaviour across both axes.
+// A new Up/Down press mid-motion just updates sectionIndex (which changes
+// scrollOffset), and the next tick continues gliding from the current
+// visual position with the new distance. There is no tween restart or
+// velocity discontinuity, so held Up/Down blends into one continuous
+// glide with a natural ease-out tail on release.
 //
 // Template pixel values are literals (Blits templates cannot interpolate JS).
 // x=64 matches CONTENT_PADDING_X; 880 matches HERO_HEIGHT; 410 = RAIL_HEIGHT.
@@ -43,7 +45,7 @@ export default Blits.Component('PageContainer', {
     ContentRail,
   },
   template: `
-    <Element :y.transition="$scrollTransition">
+    <Element :y="$animY">
       <HeroCarousel ref="hero" :slides="$hero" />
       <ContentRail
         :for="(rail, index) in $rails"
@@ -71,30 +73,42 @@ export default Blits.Component('PageContainer', {
       // Initial value covers rails 0 to RAIL_VISIBLE_ROWS + BUFFER_DOWN
       // while the user is still on the hero.
       railWinEnd: RAIL_VISIBLE_ROWS + RAIL_BUFFER_DOWN,
+      // Current animated Y for the outer container. Bound directly to the
+      // template — every scrollTick assignment repositions the whole stack.
+      // Kept in state (not as a plain instance property) so Blits' reactive
+      // template binding actually re-renders on every update.
+      animY: 0,
+      // Active requestAnimationFrame id, or 0 if no loop is running. Kept
+      // in state so assignments in scrollTick / ensureScrollLoopRunning are
+      // visible to Blits' reactive system in the same way ContentRail does;
+      // no template reads it directly so there is no re-render overhead.
+      rafHandle: 0,
+      // Timestamp of the last rAF tick, used to compute per-frame dt so
+      // easeStep is proportional to real elapsed time and behaviour is
+      // identical at 30/60/120 fps.
+      lastFrameTime: 0,
     }
   },
   computed: {
-    // Vertical pixel offset for the current section. Recomputes whenever
-    // sectionIndex changes and feeds scrollTransition below.
+    // Target Y offset (positive number) for the current focused section.
+    // ensureScrollLoopRunning negates this when handing to easeStep so
+    // higher sectionIndex scrolls the content up the screen.
     scrollOffset() {
       return getPageScrollOffset(this.sectionIndex, HERO_HEIGHT, RAIL_HEIGHT, NAVBAR_HEIGHT)
-    },
-    // Tween config bound to the outer element's :y.transition. When
-    // scrollOffset changes this re-emits; Blits interrupts any in-flight
-    // tween and re-interpolates y toward the new target from the current
-    // visual position, using the shared duration and easing constants.
-    scrollTransition() {
-      return {
-        value: -this.scrollOffset,
-        duration: SCROLL_TRANSITION_DURATION,
-        easing: SCROLL_TRANSITION_EASING,
-      }
     },
   },
   hooks: {
     init() {
       // Navbar emits this when the user presses Down/Enter to enter the page.
       this.$listen('nav:focus-content', () => this.focusCurrentSection())
+    },
+    // Cancel any in-flight rAF so we don't touch state on a component
+    // that's already been torn down (which would throw on the next tick).
+    destroy() {
+      if (this.rafHandle) {
+        cancelAnimationFrame(this.rafHandle)
+        this.rafHandle = 0
+      }
     },
   },
   input: {
@@ -103,6 +117,7 @@ export default Blits.Component('PageContainer', {
       this.sectionIndex++
       this.updateRailWindow()
       this.focusCurrentSection()
+      this.ensureScrollLoopRunning()
     },
     up() {
       if (this.sectionIndex <= 0) {
@@ -112,6 +127,7 @@ export default Blits.Component('PageContainer', {
       this.sectionIndex--
       this.updateRailWindow()
       this.focusCurrentSection()
+      this.ensureScrollLoopRunning()
     },
     back() {
       this.$emit('nav:focus-navbar')
@@ -135,6 +151,32 @@ export default Blits.Component('PageContainer', {
       const railIndex = this.sectionIndex - 1
       this.railWinStart = Math.max(0, railIndex - RAIL_BUFFER_UP)
       this.railWinEnd = railIndex + RAIL_VISIBLE_ROWS + RAIL_BUFFER_DOWN
+    },
+    // Start the rAF scroll loop if it isn't already running. Called from
+    // every accepted Up/Down press. If the loop is already running, presses
+    // just update sectionIndex (and therefore the scrollOffset computed);
+    // the loop picks up the new target on its next tick with no restart.
+    ensureScrollLoopRunning() {
+      if (this.rafHandle) return
+      this.lastFrameTime = performance.now()
+      this.rafHandle = requestAnimationFrame((now) => this.scrollTick(now))
+    },
+    // Per-frame step. Eases animY toward -scrollOffset (target Y for the
+    // current section) using exponential smoothing. Stops (returns without
+    // rescheduling) once the remaining distance is below the sub-pixel
+    // settle threshold, so an idle page does not consume rAF slots.
+    scrollTick(now) {
+      const dt = now - this.lastFrameTime
+      this.lastFrameTime = now
+      const target = -this.scrollOffset
+      const remaining = target - this.animY
+      if (Math.abs(remaining) < SETTLE_PX) {
+        this.animY = target
+        this.rafHandle = 0
+        return
+      }
+      this.animY = easeStep(this.animY, target, dt, PAGE_SCROLL_TAU_MS)
+      this.rafHandle = requestAnimationFrame((next) => this.scrollTick(next))
     },
   },
 })
