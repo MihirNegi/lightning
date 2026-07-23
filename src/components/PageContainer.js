@@ -1,6 +1,5 @@
 import Blits from '@lightningjs/blits'
 import {
-  CARD_GAP,
   CONTENT_PADDING_X,
   HERO_HEIGHT,
   NAVBAR_HEIGHT,
@@ -9,7 +8,7 @@ import {
 } from '../constants/layout.js'
 import { PAGE_SCROLL_TAU_MS, SETTLE_PX, easeStep } from '../helpers/animations.js'
 import HeroCarousel from './HeroCarousel.js'
-import ContentRail, { CARD_OFFSET_X, FRAME_MARGIN, PEEK_LEFT_FRACTION } from './ContentRail.js'
+import ContentRail, { FRAME_MARGIN } from './ContentRail.js'
 
 // Rail's inner title strip height. ContentRail places its clip at y=52
 // below the rail's origin; the frame overlay lines up with the card
@@ -185,26 +184,18 @@ export default Blits.Component('PageContainer', {
     frameMargin() {
       return FRAME_MARGIN
     },
-    // Card step for the focused rail's orientation. Used to place the
-    // frame at the peek slot — same offset the rail's scroll target uses,
-    // so the focused card lands exactly where the frame sits.
-    focusedCardStep() {
-      return this.focusedRailDims.cardW + CARD_GAP
-    },
     frameW() {
       return this.focusedRailDims.cardW + FRAME_MARGIN * 2
     },
     frameH() {
       return this.focusedRailDims.cardH + FRAME_MARGIN * 2
     },
-    // Absolute screen x of the frame's top-left corner. Aligns to the card
-    // that sits at the peek slot within the rail: rail x (CONTENT_PADDING_X)
-    // + card inset (CARD_OFFSET_X) + peek offset (PEEK_LEFT_FRACTION * step)
-    // - FRAME_MARGIN so the frame is 5px OUTSIDE the card on the left.
+    // Absolute screen x of the frame's top-left corner. ContentRail pins
+    // the focused card's left edge at CONTENT_PADDING_X for every value
+    // of selectedIndex, so the frame sits 5px LEFT of that (FRAME_MARGIN
+    // outside the card) — a static value that never changes with input.
     frameX() {
-      return (
-        CONTENT_PADDING_X + CARD_OFFSET_X + PEEK_LEFT_FRACTION * this.focusedCardStep - FRAME_MARGIN
-      )
+      return CONTENT_PADDING_X - FRAME_MARGIN
     },
     // Absolute screen y of the frame's top-left corner. Sits at the fixed
     // "row of focus": below the navbar + gap, past the rail title strip,

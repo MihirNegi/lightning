@@ -1,45 +1,26 @@
 import Blits from '@lightningjs/blits'
-import { CARD_GAP, RAIL_VISIBLE_WIDTH, cardDimsFor } from '../constants/layout.js'
+import { CARD_GAP, CONTENT_PADDING_X, STAGE_W, cardDimsFor } from '../constants/layout.js'
 import { HOLD_THROTTLE_RAIL_MS, SETTLE_PX, easeStep } from '../helpers/animations.js'
-import { getRailScrollOffset } from '../helpers/scroll.js'
 import PosterCard from './PosterCard.js'
 
 // Lazy-mount window: how many cards to render around the current selection.
-// The visible clip runs to the screen edge (RAIL_VISIBLE_WIDTH), so portrait
-// rails show ~6.5 cards and landscape ~3.8. AFTER covers everything to the
-// right of focus (focus + AFTER cards must fill the clip so no gap appears
-// at the right edge) plus a small forward buffer for a pressed key that
-// arrives before scroll settles. BEFORE keeps a card mounted behind the
-// focus for smooth back-scroll. Cards outside the window are unmounted and
-// their image textures freed — keeps GPU fill rate low on TV hardware.
+// The visible clip spans the full stage width. AFTER covers everything to
+// the right of focus (focus + AFTER cards must fill the clip so no gap
+// appears at the right edge) plus a small forward buffer for a pressed
+// key that arrives before scroll settles. BEFORE keeps one card mounted
+// behind the focus — that card is the "peek" tile that renders in the
+// black area to the left of the title. Cards outside the window are
+// unmounted and their image textures freed.
 const WINDOW_BEFORE = 2
 const WINDOW_AFTER = 7
 
-// Card layout offsets inside the clip. Card sits 8px below the clip top
-// and 12px inside the left edge. PageContainer's frame overlay derives
-// its screen position from these (plus PEEK_LEFT_FRACTION), so make sure
-// the two agree if either is tuned.
-export const CARD_OFFSET_X = 12
+// Static vertical offset of each card inside the clip. 8px of breathing
+// room above the card, matched by a 16px pad in clipH below.
 const CARD_OFFSET_Y = 8
 // Frame-around-card margin: the focus frame sits 5px outside the card on
 // every side. Exported so PageContainer's global frame overlay can size
 // itself consistently with the rail's card layout.
 export const FRAME_MARGIN = 5
-
-// Peek fraction: what portion of the PREVIOUS card stays visible to the
-// left of the focused card at rest. Sliced by the clip's left edge so the
-// visible portion reads as a card cut in half — the "there is more to the
-// left" signal that pairs with the natural cutoff of the trailing card on
-// the right (JioTV / Prime Video pattern). 0 pins focus at the leftmost
-// slot (Rust reference model — cutoff only on the right). 1 shows the
-// entire previous card, which reads more as padding than a cutout. 0.4
-// is roughly one third of a card — enough to obviously be a partial card
-// without dominating the visible strip.
-//
-// Exported so PageContainer's global focus-frame overlay can compute the
-// same x offset the scroll target uses — both must agree or the frame
-// will not line up with the focused card.
-export const PEEK_LEFT_FRACTION = 0.4
 
 // Horizontally scrolling rail of poster cards. Owns real keyboard focus:
 // Left/Right moves the selected card, and the previously selected card is
@@ -47,31 +28,28 @@ export const PEEK_LEFT_FRACTION = 0.4
 //
 // Dimensions are orientation-driven: pass orientation="portrait" or
 // "landscape" and the outer height, clip height, card size, and focus
-// frame size all resolve from cardDimsFor(). This keeps the same component
-// (and its scroll + focus logic) usable for both card shapes without
-// forking a landscape variant.
+// frame size all resolve from cardDimsFor().
+//
+// Focus-slot model:
+//   The focused card's left edge ALWAYS lands at absolute x = CONTENT_PADDING_X
+//   (flush with the rail title). The clip is extended left of the title
+//   into the 0..CONTENT_PADDING_X black band so the PREVIOUS card can
+//   peek there — CONTENT_PADDING_X - CARD_GAP px of it are visible when
+//   the user is not on card 0. On card 0 the black band is empty (there
+//   is no card -1 to peek), which acts as the "start of rail" indicator.
+//
+// Because the focus slot is constant, the global focus frame in
+// PageContainer never moves horizontally within a rail — the cards slide
+// under it. That means this component does not need to notify the frame
+// on Left/Right at all.
 //
 // Scroll implementation: a manual requestAnimationFrame loop (see
 // scrollTick + ensureScrollLoopRunning) moves scrollActual toward
 // scrollTarget using exponential smoothing (easeStep). Input handlers
 // update scrollTarget; the RAF loop picks up the new target on its next
-// tick with velocity naturally proportional to remaining distance — so a
-// press mid-motion just extends the target and the glide continues with
-// no restart, no fresh duration budget, no velocity discontinuity. On
-// release, the tail eases out on its own.
-//
-// The focus indicator is NOT drawn here. It lives in PageContainer as a
-// global overlay at fixed absolute screen coordinates — that way it does
-// not move when the container animates vertically between rails. Each rail
-// just draws its title + clipped strip of cards; whichever card is at the
-// peek slot at rest (see PEEK_LEFT_FRACTION below) is the one the overlay
-// frame ends up surrounding. See PageContainer for the frame element.
-//
-// Scroll math is designed to put the focused card at the SAME clip-local x
-// for every value of selectedIndex, including 0 — getRailScrollOffset does
-// not clamp at zero, so for F=0 the scroll target is negative and card 0
-// lands at the peek slot with an empty peek zone to its left ("start of
-// rail" indicator).
+// tick with velocity proportional to remaining distance — so a press
+// mid-motion just extends the target and the glide continues with no
+// restart, no fresh duration budget, no velocity discontinuity.
 export default Blits.Component('ContentRail', {
   components: {
     PosterCard,
@@ -89,7 +67,7 @@ export default Blits.Component('ContentRail', {
         color="#FFFFFF"
         :alpha.transition="{value: $$hasFocus ? 1 : 0, duration: 200, easing: 'ease-out'}"
       />
-      <Element y="52" :w="$clipW" :h="$clipH" clipping="true">
+      <Element :x="$clipX" y="52" :w="$clipW" :h="$clipH" clipping="true">
         <Element :x="-$scrollActual">
           <PosterCard
             :for="(item, index) in $visibleItems"
@@ -136,16 +114,12 @@ export default Blits.Component('ContentRail', {
       // Active requestAnimationFrame id, or 0 if no loop is running.
       // Stored on the instance (not as reactive state) so we don't
       // trigger reactivity dispatch every time the loop starts/stops.
-      // Assigned in ensureScrollLoopRunning and cleared in scrollTick
-      // when the target is reached, or in the destroy hook on teardown.
       rafHandle: 0,
       // Timestamp of the last RAF tick, used to compute per-frame dt so
       // motion is proportional to real elapsed time (robust to frame
       // pacing jitter) rather than assumed to be 16.7ms per tick.
       lastFrameTime: 0,
-      // Static offset for the card's y inside the clip. The focus frame is
-      // rendered by PageContainer at a fixed screen y, so no frame-related
-      // offsets need to live here anymore.
+      // Static offset for the card's y inside the clip.
       cardOffsetY: CARD_OFFSET_Y,
     }
   },
@@ -165,8 +139,17 @@ export default Blits.Component('ContentRail', {
     outerH() {
       return 76 + this.cardH
     },
+    // Clip rectangle covers the full stage width, positioned so its
+    // absolute left edge is x=0. The rail element itself sits at
+    // absolute x=CONTENT_PADDING_X (see PageContainer template), so the
+    // clip's rail-local x must be -CONTENT_PADDING_X. Extending the clip
+    // into the left padding band lets the previous card render there as
+    // a peek tile once selectedIndex > 0.
+    clipX() {
+      return -CONTENT_PADDING_X
+    },
     clipW() {
-      return RAIL_VISIBLE_WIDTH
+      return STAGE_W
     },
     // Clip height: card + top offset (8) + a matching bottom breathing
     // room (16). Portrait resolves to 334, landscape to 284.
@@ -180,13 +163,10 @@ export default Blits.Component('ContentRail', {
   },
   hooks: {
     init() {
-      // Prime the scroll to the peek-aware value for the current selection
-      // BEFORE first paint. Without this, a freshly-mounted rail sits at
-      // scrollActual=0 while the global focus frame in PageContainer is
-      // pinned at the peek slot — the frame ends up between cards 0 and
-      // 1 instead of surrounding card 0. Calling updateScrollTarget() +
-      // syncing scrollActual makes the initial frame position land on
-      // card `selectedIndex` immediately, no animation needed at mount.
+      // Prime the scroll so the focused card sits at the focus slot from
+      // first paint — otherwise a freshly-mounted rail would sit at
+      // scrollActual=0 while the global focus frame is pinned at
+      // CONTENT_PADDING_X, and the frame would land between cards.
       this.updateScrollTarget()
       this.scrollActual = this.scrollTarget
       this.rebuildVisibleItems()
@@ -234,22 +214,22 @@ export default Blits.Component('ContentRail', {
     },
   },
   methods: {
-    // Update the scroll target based on the current selected index. Does
-    // NOT immediately move the track — the RAF loop advances scrollActual
-    // toward scrollTarget over subsequent frames at constant velocity.
+    // Update the scroll target so the focused card's left edge lands at
+    // absolute x = CONTENT_PADDING_X (aligned with the rail title). The
+    // clip's absolute origin is x=0 (rail is at CONTENT_PADDING_X, clip is
+    // offset -CONTENT_PADDING_X inside the rail), so card i's absolute x
+    // simplifies to i * step - scrollActual. Solve for scrollActual with
+    // i = selectedIndex landing at abs-x = CONTENT_PADDING_X:
+    //   scrollActual = selectedIndex * step - CONTENT_PADDING_X
+    // For card 0: scrollActual = -CONTENT_PADDING_X, so card 0 sits at
+    // abs-x = 64 and the black band from 0..64 has no card to peek in.
     updateScrollTarget() {
-      this.scrollTarget = getRailScrollOffset(
-        this.selectedIndex,
-        this.cardW,
-        CARD_GAP,
-        PEEK_LEFT_FRACTION,
-      )
+      this.scrollTarget = this.selectedIndex * this.cardStep - CONTENT_PADDING_X
     },
     // Start the RAF scroll loop if it isn't already running. Called from
     // every accepted input. If the loop is already running, presses just
     // update scrollTarget and the loop picks up the new target on its
-    // next tick — no restart, no velocity reset, no visible hitch at
-    // the input boundary.
+    // next tick — no restart, no velocity reset, no visible hitch.
     ensureScrollLoopRunning() {
       if (this.rafHandle) return
       this.lastFrameTime = performance.now()
@@ -285,7 +265,7 @@ export default Blits.Component('ContentRail', {
       const step = this.cardStep
       const slice = []
       for (let i = start; i < end; i++) {
-        slice.push({ ...this.items[i], posX: CARD_OFFSET_X + i * step })
+        slice.push({ ...this.items[i], posX: i * step })
       }
       this.visibleItems = slice
     },
