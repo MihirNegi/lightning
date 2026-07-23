@@ -60,33 +60,45 @@ export default Blits.Application({
       showNavbar: true,
     }
   },
-  routes: [
-    // Dynamic imports — each page module (and its data helpers) is only
-    // parsed/evaluated when the user first navigates to that tab, not at
-    // app boot. Reduces initial parse + eval cost on TV JS engines and
-    // avoids building rail data for tabs the user may never visit.
-    { path: '/', component: () => import('./pages/Home.js'), options: TAB_ROUTE_OPTIONS },
-    { path: '/movies', component: () => import('./pages/Movies.js'), options: TAB_ROUTE_OPTIONS },
-    { path: '/shows', component: () => import('./pages/Shows.js'), options: TAB_ROUTE_OPTIONS },
-    { path: '/sports', component: () => import('./pages/Sports.js'), options: TAB_ROUTE_OPTIONS },
-    { path: '/fps', component: () => import('./pages/Fps.js'), options: TAB_ROUTE_OPTIONS },
-    { path: '/meta', component: () => import('./pages/Meta.js'), options: DRILL_ROUTE_OPTIONS },
-    { path: '/player', component: () => import('./pages/Player.js'), options: DRILL_ROUTE_OPTIONS },
-  ],
-  routerHooks: {
-    // Fires after every route transition finishes, including the initial
-    // mount. Used to steal focus back to Navbar for tab-to-tab switches —
-    // without this, passFocus:true on tab routes would hand focus to the
-    // page root, so pressing Right on the Navbar would move to a new tab
-    // and lose the Navbar cursor. Coming back from Meta -> Home, the
-    // router has already restored the cached ContentRail focus and we do
-    // NOT want to overwrite that, so we only re-focus Navbar when the
-    // origin is also a tab (or the very first mount, where from is null).
-    afterEach(to, from) {
-      if (!TAB_PATHS.has(to.path)) return
-      if (from && !TAB_PATHS.has(from.path)) return
-      this.focusNavbar()
+  // Blits reads routes as either an array (routes only) or an object with
+  // { hooks, routes }. The object form is required to register router
+  // hooks like afterEach — a top-level `routerHooks` field is silently
+  // ignored by Blits' setup and the hooks never fire.
+  routes: {
+    hooks: {
+      // Fires after every route transition finishes, including the initial
+      // mount. Used to steal focus back to Navbar for tab-to-tab switches —
+      // without this, passFocus:true on tab routes hands focus to the page
+      // root, so pressing Right on the Navbar moves to a new tab AND loses
+      // the Navbar cursor (no ancestor has left/right handlers, so keys
+      // are dropped and the app appears frozen). Coming back from Meta ->
+      // Home, the router has already restored the cached ContentRail focus
+      // and we do NOT want to overwrite that, so we only re-focus Navbar
+      // when the origin is also a tab (or the very first mount, where
+      // `from` is undefined).
+      afterEach(to, from) {
+        if (!TAB_PATHS.has(to.path)) return
+        if (from && !TAB_PATHS.has(from.path)) return
+        this.focusNavbar()
+      },
     },
+    routes: [
+      // Dynamic imports — each page module (and its data helpers) is only
+      // parsed/evaluated when the user first navigates to that tab, not at
+      // app boot. Reduces initial parse + eval cost on TV JS engines and
+      // avoids building rail data for tabs the user may never visit.
+      { path: '/', component: () => import('./pages/Home.js'), options: TAB_ROUTE_OPTIONS },
+      { path: '/movies', component: () => import('./pages/Movies.js'), options: TAB_ROUTE_OPTIONS },
+      { path: '/shows', component: () => import('./pages/Shows.js'), options: TAB_ROUTE_OPTIONS },
+      { path: '/sports', component: () => import('./pages/Sports.js'), options: TAB_ROUTE_OPTIONS },
+      { path: '/fps', component: () => import('./pages/Fps.js'), options: TAB_ROUTE_OPTIONS },
+      { path: '/meta', component: () => import('./pages/Meta.js'), options: DRILL_ROUTE_OPTIONS },
+      {
+        path: '/player',
+        component: () => import('./pages/Player.js'),
+        options: DRILL_ROUTE_OPTIONS,
+      },
+    ],
   },
   hooks: {
     ready() {
