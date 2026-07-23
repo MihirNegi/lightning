@@ -109,10 +109,16 @@ color="#FFFFFF"
     },
   },
   methods: {
-    // Navigate to the tab at the given index and highlight it.
+    // Navigate to the tab at the given index and highlight it. The third
+    // argument to $router.to overrides the outgoing route's keepAlive to
+    // false — tabs statically keepAlive:true so a drill-into-Meta caches
+    // the current tab's view, but we do NOT want that behaviour on a plain
+    // tab-to-tab switch (it would leak a view for every previously-visited
+    // tab). The afterEach router hook in App.js pulls focus back to Navbar
+    // once the transition completes.
     selectTab(index) {
       this.focusIndex = index
-      this.$router.to(this.tabs[index].path)
+      this.$router.to(this.tabs[index].path, {}, { keepAlive: false })
     },
     // Highlight whichever tab matches the current route (e.g. on boot or focus).
     syncFocusIndexWithRoute() {

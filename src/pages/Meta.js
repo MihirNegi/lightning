@@ -88,15 +88,15 @@ export default Blits.Component('Meta', {
         video: this.video,
       })
     },
-    // Back pops the /meta history entry. The destination is a tab, which
-    // does not emit chrome events on its own, so we emit 'tab' here before
-    // popping so the shell (navbar + root color) is right by the time the
-    // tab paints its first frame. We also ask the shell to give focus to
-    // the Navbar since the destination tab does not auto-focus a section
-    // on remount.
+    // Back pops the /meta history entry. The destination tab does not
+    // emit chrome events on its own, so we emit 'tab' here before popping
+    // so the shell (navbar + bg alpha) is right by the time the tab paints
+    // its first frame. Focus is restored automatically by the router — tab
+    // routes are keepAlive:true so the cached ContentRail focus reference
+    // is applied via passFocus, returning the user to the exact card they
+    // pressed Enter on.
     back() {
       this.$emit('chrome:set', 'tab')
-      this.$emit('nav:focus-navbar')
       this.$router.back()
     },
   },

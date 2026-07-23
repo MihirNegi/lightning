@@ -1,24 +1,26 @@
 import Blits from '@lightningjs/blits'
 import Navbar from './components/Navbar.js'
 
-// Tab pages are destroyed when switching away, not cached. keepAlive:true
-// only works when navigation is via $router.back(), which the Navbar
-// deliberately does not do (it always calls $router.to()). Combined with
-// inHistory:false, a kept-alive view was never destroyed AND never
-// reachable again — every tab switch orphaned the previous page's view,
-// leaking rails + card textures indefinitely. keepAlive:false frees the
-// previous page cleanly on each switch. reuseComponent:false ensures a
-// fresh instance on re-entry so state resets to the top of the page.
+// Tab pages participate in history so Meta.back can pop cleanly back to the
+// tab the user drilled in from. keepAlive:true caches the outgoing tab's
+// view + its focused-component reference, so on back the ContentRail the
+// user was on is restored — with its scroll position and focused card
+// intact. To avoid the historical leak of cached views on tab-to-tab
+// switches (Navbar uses router.to, not router.back), Navbar overrides
+// keepAlive:false at call-time — the history entry is still recorded but
+// no view is cached, so switching tabs stays memory-bounded.
 const TAB_ROUTE_OPTIONS = {
-  passFocus: false,
-  inHistory: false,
-  keepAlive: false,
+  passFocus: true,
+  inHistory: true,
+  keepAlive: true,
   reuseComponent: false,
 }
 
-// Meta/Player drill-down routes DO participate in history so $router.back()
-// returns to the page (or Meta) the user came from. Fresh mount each time
-// keeps the incoming route deterministic — same reasoning as tabs.
+// Drill-down routes (/meta, /player) also participate in history so back
+// works from Player -> Meta -> tab. keepAlive:false because a fresh mount
+// on re-entry is cheap and gives deterministic focus + video state each
+// time. passFocus:true lets the router hand focus to the mounted view;
+// each drill page also calls this.$focus() in ready as a belt-and-braces.
 const DRILL_ROUTE_OPTIONS = {
   passFocus: true,
   inHistory: true,
@@ -26,26 +28,35 @@ const DRILL_ROUTE_OPTIONS = {
   reuseComponent: false,
 }
 
+// Tab paths — used by the afterEach router hook to decide whether to
+// re-focus the Navbar after a navigation completes.
+const TAB_PATHS = new Set(['/', '/movies', '/shows', '/sports', '/fps'])
+
 export default Blits.Application({
   components: {
     Navbar,
   },
+  // The outer wrapper stays transparent. A dedicated background Element
+  // sits behind everything else and drives its own alpha reactively — on
+  // the Player route it fades to 0 so the DOM <video> beneath the canvas
+  // shows through. Using :alpha on a real element is more reliable than
+  // toggling a color to rgba(...,0) on the outer wrapper, which was not
+  // consistently rendered transparent by the underlying WebGL clear path.
   template: `
-    <Element w="1920" h="1080" :color="$rootColor">
+    <Element w="1920" h="1080">
+      <Element w="1920" h="1080" color="#0B0B0B" :alpha="$bgAlpha" />
       <RouterView ref="router" w="1920" h="1080" />
       <Navbar ref="navbar" :show="$showNavbar" />
     </Element>
   `,
   state() {
     return {
-      // Reactively set by Meta / Player as they mount and unmount so the
-      // canvas surface is opaque #0B0B0B on tab + meta screens (matches the
-      // canvasColor before the Player was introduced) and fully transparent
-      // on Player (letting the native <video> behind the canvas show
-      // through).
-      rootColor: '#0B0B0B',
-      // Navbar is hidden during drill-down modes (Meta + Player) — they are
-      // full-screen contexts and the tab strip would be visual noise there.
+      // 1 on tab + meta screens (opaque dark background matches the
+      // canvasColor before Player was introduced), 0 on Player so the
+      // native <video> behind the canvas composites through.
+      bgAlpha: 1,
+      // Hidden during drill-down modes (Meta + Player) — those are
+      // full-screen contexts and the tab strip is visual noise there.
       showNavbar: true,
     }
   },
@@ -62,23 +73,36 @@ export default Blits.Application({
     { path: '/meta', component: () => import('./pages/Meta.js'), options: DRILL_ROUTE_OPTIONS },
     { path: '/player', component: () => import('./pages/Player.js'), options: DRILL_ROUTE_OPTIONS },
   ],
+  routerHooks: {
+    // Fires after every route transition finishes, including the initial
+    // mount. Used to steal focus back to Navbar for tab-to-tab switches —
+    // without this, passFocus:true on tab routes would hand focus to the
+    // page root, so pressing Right on the Navbar would move to a new tab
+    // and lose the Navbar cursor. Coming back from Meta -> Home, the
+    // router has already restored the cached ContentRail focus and we do
+    // NOT want to overwrite that, so we only re-focus Navbar when the
+    // origin is also a tab (or the very first mount, where from is null).
+    afterEach(to, from) {
+      if (!TAB_PATHS.has(to.path)) return
+      if (from && !TAB_PATHS.has(from.path)) return
+      this.focusNavbar()
+    },
+  },
   hooks: {
     ready() {
       // When a page presses Up on its top row, it emits this event to
-      // return focus to the Navbar (pages that support this will be built in step 4).
+      // return focus to the Navbar.
       this.$listen('nav:focus-navbar', () => this.focusNavbar())
       // Navbar emits this when back is pressed while it holds focus — the
       // user is at the app root and wants to leave.
       this.$listen('app:exit', () => this.exitApp())
-      // Meta + Player emit chrome:set on ready/destroy to signal how the
-      // App shell should present itself. Modes: 'tab' (opaque root, navbar
-      // visible), 'meta' (opaque root, navbar hidden), 'player' (transparent
-      // root so the DOM <video> shows through, navbar hidden). Emitting on
-      // both ready + destroy keeps the state right across Meta<->Player
-      // and Meta->back->tab transitions without needing a global router
-      // hook.
+      // Meta + Player emit chrome:set on ready to signal how the App
+      // shell should present itself. Modes: 'tab' (opaque bg, navbar
+      // visible), 'meta' (opaque bg, navbar hidden), 'player' (fully
+      // transparent bg so the DOM <video> shows through, navbar hidden).
+      // Meta.back also emits 'tab' explicitly since tabs never emit
+      // chrome events on their own.
       this.$listen('chrome:set', (mode) => this.applyChrome(mode))
-      this.focusNavbar()
     },
   },
   methods: {
@@ -88,11 +112,10 @@ export default Blits.Application({
       if (navbar) navbar.$focus()
     },
     // Update the app shell to match the mode emitted by the active page.
-    // Kept small and deliberate — three known modes, no lookup table, so
-    // adding a mode later is a two-line change.
+    // Three known modes; adding a fourth is a two-line change here.
     applyChrome(mode) {
       this.showNavbar = mode === 'tab'
-      this.rootColor = mode === 'player' ? 'rgba(0, 0, 0, 0)' : '#0B0B0B'
+      this.bgAlpha = mode === 'player' ? 0 : 1
     },
     // Close the TV application. Tries platform-native exit APIs first
     // (Tizen on Samsung, webOS on LG) and falls back to window.close(),
