@@ -12,6 +12,7 @@ export const TRANSITIONS_ENABLED = true
 // locally. slow (page vertical scroll) can be longer for a cinematic feel
 // because we pre-render off-screen rails via index.js:viewportMargin so
 // entering rails don't cost a first-draw spike per frame during the scroll.
+//wow
 export const DURATION = {
   fast: 200,
   base: 150,
