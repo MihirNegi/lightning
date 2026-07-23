@@ -50,12 +50,7 @@ export default Blits.Component('PageContainer', {
   },
   template: `
     <Element :y="$animY">
-      <HeroCarousel
-        :for="(slot, i) in $heroSlot"
-        key="hero"
-        ref="hero"
-        :slides="$slot.slides"
-      />
+      <HeroCarousel ref="hero" :show="$hasHero" :slides="$hero" />
       <ContentRail
         :for="(rail, index) in $railsWithLayout"
         :range="{from: $railWinStart, to: $railWinEnd}"
@@ -94,15 +89,16 @@ export default Blits.Component('PageContainer', {
   },
   computed: {
     // True when a hero carousel is present. Drives section index math,
-    // rail Y offsets, and whether the HeroCarousel is mounted at all.
+    // rail Y offsets, and whether the HeroCarousel is visible. The
+    // carousel is always mounted (Blits refs inside :for get auto-
+    // suffixed with the loop index, so mounting HeroCarousel via :for
+    // meant $select('hero') returned null and the hero never received
+    // focus, breaking arrow navigation and autoplay). Always-mounted +
+    // hidden via :show avoids that trap; HeroCarousel short-circuits
+    // its own autoplay when slides is empty so the hidden instance
+    // does no per-tick work.
     hasHero() {
       return this.hero && this.hero.length > 0
-    },
-    // Wraps the hero data in a 0- or 1-length array so the template :for
-    // truly unmounts HeroCarousel on heroless pages (rather than mounting
-    // it with empty slides, which would still run autoplay timers).
-    heroSlot() {
-      return this.hasHero ? [{ slides: this.hero }] : []
     },
     // Where each rail is positioned within the outer container and what
     // scroll offset lands its title just below the navbar. Computed in a

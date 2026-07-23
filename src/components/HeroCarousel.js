@@ -98,7 +98,11 @@ export default Blits.Component('HeroCarousel', {
     // in the background costs frame budget (the slide transition is the biggest
     // per-tick expense of this page) with no user benefit — nobody sees the
     // change when they're scrolled to a rail or on a different tab.
+    // Also guarded on slides — heroless pages always mount HeroCarousel
+    // (to keep its ref reachable via $select), so focus() can fire on an
+    // empty instance; no slides means no autoplay work to do.
     focus() {
+      if (!this.slides.length) return
       this.startAutoplay()
     },
     unfocus() {
