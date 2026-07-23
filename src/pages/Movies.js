@@ -4,10 +4,9 @@ import moviesData from '../data/movies.js'
 
 export default Blits.Component('Movies', {
   components: { PageContainer },
-  template: '<PageContainer :hero="$hero" :rails="$rails" />',
+  template: '<PageContainer :rails="$rails" />',
   state() {
     return {
-      hero: moviesData.hero,
       rails: moviesData.rails,
     }
   },

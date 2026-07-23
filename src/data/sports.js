@@ -1,25 +1,4 @@
-import { createRail, createHeroSlides } from './contentFactory.js'
-
-const hero = createHeroSlides({
-  id: 'sports',
-  slides: [
-    {
-      title: 'Championship Final',
-      subtitle: 'Live This Weekend',
-      description: 'The two best teams in the league meet for the ultimate showdown.',
-    },
-    {
-      title: 'Golden Era',
-      subtitle: 'Documentary Series',
-      description: 'Relive the moments that defined a generation of athletes.',
-    },
-    {
-      title: 'Rising Stars',
-      subtitle: 'New Season',
-      description: 'Follow the next wave of talent chasing their first title.',
-    },
-  ],
-})
+import { createRail } from './contentFactory.js'
 
 const rails = [
   createRail({ id: 'sports-live', title: 'Live Now', genres: ['Football', 'Cricket', 'Tennis'] }),
@@ -60,4 +39,4 @@ const rails = [
   createRail({ id: 'sports-swimming', title: 'Swimming', genres: ['Swimming', 'Athletics'] }),
 ]
 
-export default { hero, rails }
+export default { rails }

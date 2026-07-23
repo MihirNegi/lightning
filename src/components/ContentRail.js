@@ -1,25 +1,37 @@
 import Blits from '@lightningjs/blits'
-import { CARD_W, CARD_GAP } from '../constants/layout.js'
+import { CARD_GAP, RAIL_VISIBLE_WIDTH, cardDimsFor } from '../constants/layout.js'
 import { HOLD_THROTTLE_RAIL_MS, SETTLE_PX, easeStep } from '../helpers/animations.js'
 import { getRailScrollOffset } from '../helpers/scroll.js'
 import PosterCard from './PosterCard.js'
 
 // Lazy-mount window: how many cards to render around the current selection.
-// ~7 cards fit in the visible clipping window, so BEFORE covers scroll-back
-// and AFTER buffers forward scrolling. Cards outside the window are unmounted
-// and their image textures freed — keeps GPU fill rate low on TV hardware.
-// Tuned tight: BEFORE=2 (one card behind for smooth back-scroll), AFTER=5
-// (visible cards + small forward buffer). Fewer mounted cards = fewer
-// textured quads drawn per frame.
+// ~7 cards fit in the visible clipping window at portrait width, fewer at
+// landscape width — the window is generous enough for both. BEFORE covers
+// scroll-back and AFTER buffers forward scrolling. Cards outside the window
+// are unmounted and their image textures freed — keeps GPU fill rate low
+// on TV hardware. Tuned tight: BEFORE=2 (one card behind for smooth back-
+// scroll), AFTER=5 (visible cards + small forward buffer). Fewer mounted
+// cards = fewer textured quads drawn per frame.
 const WINDOW_BEFORE = 2
 const WINDOW_AFTER = 5
 
-// Horizontal step per card slot: card width + inter-card gap.
-const CARD_STEP = CARD_W + CARD_GAP
+// Card layout offsets inside the clip. Card sits 8px below the clip top and
+// 12px inside the left edge; the focus frame is offset by (5, 5) less than
+// the card so it surrounds the artwork with a 5px margin on every side.
+const CARD_OFFSET_X = 12
+const CARD_OFFSET_Y = 8
+const FRAME_OFFSET_X = CARD_OFFSET_X - 5
+const FRAME_OFFSET_Y = CARD_OFFSET_Y - 5
 
 // Horizontally scrolling rail of poster cards. Owns real keyboard focus:
 // Left/Right moves the selected card, and the previously selected card is
 // remembered while the component instance is alive (via router keepAlive).
+//
+// Dimensions are orientation-driven: pass orientation="portrait" or
+// "landscape" and the outer height, clip height, card size, and focus
+// frame size all resolve from cardDimsFor(). This keeps the same component
+// (and its scroll + focus logic) usable for both card shapes without
+// forking a landscape variant.
 //
 // Scroll implementation: a manual requestAnimationFrame loop (see
 // scrollTick + ensureScrollLoopRunning) moves scrollActual toward
@@ -28,26 +40,18 @@ const CARD_STEP = CARD_W + CARD_GAP
 // tick with velocity naturally proportional to remaining distance — so a
 // press mid-motion just extends the target and the glide continues with
 // no restart, no fresh duration budget, no velocity discontinuity. On
-// release, the tail eases out on its own. Under sustained held-key
-// scrolling there is a small steady-state lag between animation position
-// and target (~0.6 cards); this reads as a natural "weight" and is the
-// same behaviour used across the vertical page scroll for consistency.
+// release, the tail eases out on its own.
 //
-// The focus indicator is drawn HERE as a single static frame at slot (7, 3)
-// inside the clipping window (i.e. wrapping the leftmost-visible card). The
-// frame does NOT move — cards slide underneath the frame as the track scrolls
+// The focus indicator is drawn HERE as a single static frame at slot
+// (FRAME_OFFSET_X, FRAME_OFFSET_Y) inside the clipping window. The frame
+// does NOT move — cards slide underneath the frame as the track scrolls
 // left/right, and whichever card ends up in the focus slot appears framed.
-//
-// Template pixel values are literals (Blits templates cannot interpolate JS).
-// Height 386 = RAIL_TITLE_HEIGHT (76) + CARD_H (310). Width 1792 = RAIL_VISIBLE_WIDTH.
-// Inner content clip h=334 = outer 386 - title offset 52. 288 = CARD_W (260)
-// + CARD_GAP (28). Frame is 270x310 (image 260x300 + 5px each side).
 export default Blits.Component('ContentRail', {
   components: {
     PosterCard,
   },
   template: `
-    <Element h="386">
+    <Element :h="$outerH">
       <Text
         :content="$title"
         size="32"
@@ -59,30 +63,32 @@ export default Blits.Component('ContentRail', {
         color="#FFFFFF"
         :alpha.transition="{value: $$hasFocus ? 1 : 0, duration: 200, easing: 'ease-out'}"
       />
-      <Element y="52" w="1792" h="334" clipping="true">
+      <Element y="52" :w="$clipW" :h="$clipH" clipping="true">
         <Element :x="-$scrollActual">
           <PosterCard
             :for="(item, index) in $visibleItems"
             key="$item.id"
-            y="8"
+            :y="$cardOffsetY"
             :x="$item.posX"
             :title="$item.title"
             :genre="$item.genre"
             :image="$item.image"
             :progress="$item.progress"
+            :cardW="$cardW"
+            :cardH="$cardH"
           />
         </Element>
         <Element
-          x="7"
-          y="3"
-          w="270"
-          h="310"
+          :x="$frameOffsetX"
+          :y="$frameOffsetY"
+          :w="$frameW"
+          :h="$frameH"
           :alpha.transition="{value: $$hasFocus ? 1 : 0, duration: 200, easing: 'ease-out'}"
         >
-          <Element x="0" y="0" w="270" h="5" color="#FFFFFF" />
-          <Element x="0" y="305" w="270" h="5" color="#FFFFFF" />
-          <Element x="0" y="0" w="5" h="310" color="#FFFFFF" />
-          <Element x="265" y="0" w="5" h="310" color="#FFFFFF" />
+          <Element x="0" y="0" :w="$frameW" h="5" color="#FFFFFF" />
+          <Element x="0" :y="$frameBottomY" :w="$frameW" h="5" color="#FFFFFF" />
+          <Element x="0" y="0" w="5" :h="$frameH" color="#FFFFFF" />
+          <Element :x="$frameRightX" y="0" w="5" :h="$frameH" color="#FFFFFF" />
         </Element>
       </Element>
     </Element>
@@ -90,6 +96,7 @@ export default Blits.Component('ContentRail', {
   props: {
     title: '',
     items: [],
+    orientation: 'portrait',
   },
   state() {
     return {
@@ -122,7 +129,55 @@ export default Blits.Component('ContentRail', {
       // motion is proportional to real elapsed time (robust to frame
       // pacing jitter) rather than assumed to be 16.7ms per tick.
       lastFrameTime: 0,
+      // Static offsets exposed as state so the template can bind them
+      // without needing template-side computation.
+      cardOffsetY: CARD_OFFSET_Y,
+      frameOffsetX: FRAME_OFFSET_X,
+      frameOffsetY: FRAME_OFFSET_Y,
     }
+  },
+  computed: {
+    dims() {
+      return cardDimsFor(this.orientation)
+    },
+    cardW() {
+      return this.dims.cardW
+    },
+    cardH() {
+      return this.dims.cardH
+    },
+    // Outer height: title area (52) + card + top padding above card (8)
+    // + bottom padding below card (16). Matches the pattern used before
+    // portrait was hardcoded (76 + 310 = 386).
+    outerH() {
+      return 76 + this.cardH
+    },
+    clipW() {
+      return RAIL_VISIBLE_WIDTH
+    },
+    // Clip height: card + top offset (8) + a matching bottom breathing
+    // room (16). Portrait resolves to 334, landscape to 284.
+    clipH() {
+      return this.cardH + 24
+    },
+    // Frame surrounds the card with a 5px margin on each side.
+    frameW() {
+      return this.cardW + 10
+    },
+    frameH() {
+      return this.cardH + 10
+    },
+    // Bottom white bar of the focus frame sits at frameH - 5.
+    frameBottomY() {
+      return this.cardH + 5
+    },
+    frameRightX() {
+      return this.cardW + 5
+    },
+    // Horizontal step per card slot: card width + inter-card gap.
+    cardStep() {
+      return this.cardW + CARD_GAP
+    },
   },
   hooks: {
     init() {
@@ -175,7 +230,7 @@ export default Blits.Component('ContentRail', {
     // NOT immediately move the track — the RAF loop advances scrollActual
     // toward scrollTarget over subsequent frames at constant velocity.
     updateScrollTarget() {
-      this.scrollTarget = getRailScrollOffset(this.selectedIndex, CARD_W, CARD_GAP)
+      this.scrollTarget = getRailScrollOffset(this.selectedIndex, this.cardW, CARD_GAP)
     },
     // Start the RAF scroll loop if it isn't already running. Called from
     // every accepted input. If the loop is already running, presses just
@@ -214,9 +269,10 @@ export default Blits.Component('ContentRail', {
     rebuildVisibleItems() {
       const start = Math.max(0, this.selectedIndex - WINDOW_BEFORE)
       const end = Math.min(this.items.length, this.selectedIndex + WINDOW_AFTER + 1)
+      const step = this.cardStep
       const slice = []
       for (let i = start; i < end; i++) {
-        slice.push({ ...this.items[i], posX: 12 + i * CARD_STEP })
+        slice.push({ ...this.items[i], posX: CARD_OFFSET_X + i * step })
       }
       this.visibleItems = slice
     },

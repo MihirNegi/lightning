@@ -53,12 +53,31 @@ function generateTitle(seed) {
   return `${adjective} ${noun}`
 }
 
+// Image request dimensions per orientation. Smaller than the on-screen
+// card so texture upload + JPEG decode stay cheap on TV hardware — the
+// renderer upscales at composite time, which is nearly free.
+const IMG_DIMS_PORTRAIT = { w: 180, h: 270 }
+const IMG_DIMS_LANDSCAPE = { w: 320, h: 180 }
+
+// Deterministically pick an orientation for a rail from its id hash. Same
+// rail id always resolves to the same orientation across reloads so the
+// visual layout is stable — page scroll math depends on it. Simple parity
+// keeps roughly half of rails in each orientation without any bias per
+// page (the ids are page-prefixed so different pages see different mixes).
+function orientationFor(id) {
+  return hashString(id) % 2 === 0 ? 'portrait' : 'landscape'
+}
+
 // Build a single content rail. Default of 20 cards per rail — the rail
 // virtualiser inside ContentRail only mounts the on-screen slice, so the
 // per-rail draw cost is unaffected by count; it only grows the horizontal
-// scroll length. Callers can override count per rail if needed.
-export function createRail({ id, title, genres, count = 20, withProgress = false }) {
-  const images = buildPosterImages(id, count)
+// scroll length. Callers can override count per rail if needed. Orientation
+// is derived from the rail id but can be forced via the option — useful if
+// a specific rail (e.g. a "Continue Watching" row) needs a particular look.
+export function createRail({ id, title, genres, count = 20, withProgress = false, orientation }) {
+  const chosenOrientation = orientation || orientationFor(id)
+  const imgDims = chosenOrientation === 'landscape' ? IMG_DIMS_LANDSCAPE : IMG_DIMS_PORTRAIT
+  const images = buildPosterImages(id, count, imgDims.w, imgDims.h)
   const seedBase = hashString(id)
   const items = []
   for (let i = 0; i < count; i++) {
@@ -77,7 +96,7 @@ export function createRail({ id, title, genres, count = 20, withProgress = false
       video: SAMPLE_VIDEO_URL,
     })
   }
-  return { id, title, items }
+  return { id, title, items, orientation: chosenOrientation }
 }
 
 // Build the hero carousel slides for a page, attaching a background image to each.

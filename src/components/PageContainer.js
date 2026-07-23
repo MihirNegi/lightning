@@ -1,7 +1,6 @@
 import Blits from '@lightningjs/blits'
-import { HERO_HEIGHT, RAIL_HEIGHT, NAVBAR_HEIGHT } from '../constants/layout.js'
+import { HERO_HEIGHT, NAVBAR_HEIGHT, NAVBAR_TOP_GAP, cardDimsFor } from '../constants/layout.js'
 import { PAGE_SCROLL_TAU_MS, SETTLE_PX, easeStep } from '../helpers/animations.js'
-import { getPageScrollOffset } from '../helpers/scroll.js'
 import HeroCarousel from './HeroCarousel.js'
 import ContentRail from './ContentRail.js'
 
@@ -9,36 +8,41 @@ import ContentRail from './ContentRail.js'
 // focused section. Blits' :range directive uses [from, to) semantics
 // (exclusive end), so the total mounted is UP + VISIBLE + DOWN. Rails
 // outside this window are unmounted — their ContentRail instances are
-// destroyed, freeing all their card image textures. Without this every
-// rail in the page (potentially dozens) draws every frame, competing
-// with the vertical scroll tween for GPU budget.
+// destroyed, freeing all their card image textures.
 const RAIL_BUFFER_UP = 1
 const RAIL_BUFFER_DOWN = 1
 const RAIL_VISIBLE_ROWS = 3
 
-// Generic page layout: hero at the top, then a vertical stack of content rails.
-// Handles Up/Down navigation between sections and remembers which section was
-// last focused via component state (kept alive by the router's keepAlive flag).
+// Where the first content row lands on screen — matches the offset the
+// vertical scroll produces when snapping any rail into place. Kept in one
+// place so hero and heroless pages agree on it.
+const CONTENT_TOP_Y = NAVBAR_HEIGHT + NAVBAR_TOP_GAP
+
+// Generic page layout. Two modes:
+//   - With hero: an 880px HeroCarousel at the top, then a vertical stack
+//     of rails starting at HERO_HEIGHT. sectionIndex 0 focuses the hero,
+//     1..N focus each rail.
+//   - Without hero (hero prop empty): rails start at CONTENT_TOP_Y so the
+//     first rail already sits just below the navbar with no scroll
+//     required. sectionIndex 0..N-1 focus each rail directly.
 //
-// Rail mounting: only ~5 rails (RAIL_VISIBLE_ROWS + buffers) are mounted at
-// any time via Blits' :range directive. As the user scrolls Down/Up we slide
-// the window with updateRailWindow(), which must run BEFORE focus moves so
-// the target rail is guaranteed mounted when $select() looks for it. This
-// keeps the per-frame draw cost bounded regardless of how many rails the
-// page has.
+// Rails can have per-rail heights (portrait vs landscape orientation),
+// so vertical positions are cumulative sums of individual rail heights
+// rather than a fixed step. railsWithLayout computes both the per-rail
+// Y (for template positioning) and the target scroll Y (for focusing
+// that rail) in a single pass.
+//
+// Rail mounting: only ~5 rails (RAIL_VISIBLE_ROWS + buffers) are mounted
+// at any time via Blits' :range directive. As the user scrolls Down/Up
+// we slide the window with updateRailWindow(), which must run BEFORE
+// focus moves so the target rail is guaranteed mounted when $select()
+// looks for it.
 //
 // Scroll motion: a manual requestAnimationFrame loop (scrollTick +
 // ensureScrollLoopRunning) eases animY toward the target Y using
-// exponential smoothing (easeStep). Same technique the horizontal
-// ContentRail uses — one shared helper, one behaviour across both axes.
-// A new Up/Down press mid-motion just updates sectionIndex (which changes
-// scrollOffset), and the next tick continues gliding from the current
-// visual position with the new distance. There is no tween restart or
-// velocity discontinuity, so held Up/Down blends into one continuous
-// glide with a natural ease-out tail on release.
-//
-// Template pixel values are literals (Blits templates cannot interpolate JS).
-// x=64 matches CONTENT_PADDING_X; 880 matches HERO_HEIGHT; 410 = RAIL_HEIGHT.
+// exponential smoothing (easeStep). A new Up/Down press mid-motion just
+// updates sectionIndex, and the next tick continues gliding from the
+// current visual position toward the new target.
 export default Blits.Component('PageContainer', {
   components: {
     HeroCarousel,
@@ -46,16 +50,22 @@ export default Blits.Component('PageContainer', {
   },
   template: `
     <Element :y="$animY">
-      <HeroCarousel ref="hero" :slides="$hero" />
+      <HeroCarousel
+        :for="(slot, i) in $heroSlot"
+        key="hero"
+        ref="hero"
+        :slides="$slot.slides"
+      />
       <ContentRail
-        :for="(rail, index) in $rails"
+        :for="(rail, index) in $railsWithLayout"
         :range="{from: $railWinStart, to: $railWinEnd}"
         key="$rail.id"
         :ref="'rail' + $index"
         x="64"
-        :y="880 + $index * 410"
+        :y="$rail._y"
         :title="$rail.title"
         :items="$rail.items"
+        :orientation="$rail.orientation"
       />
     </Element>
   `,
@@ -65,36 +75,62 @@ export default Blits.Component('PageContainer', {
   },
   state() {
     return {
-      // 0 = hero, 1..N = rails
+      // 0 = hero (if present), 1..N = rails. When there is no hero,
+      // 0..N-1 map directly to rails.
       sectionIndex: 0,
       // Index of the first rail mounted by the :range virtualization window.
       railWinStart: 0,
       // Index one past the last rail mounted by the :range window.
-      // Initial value covers rails 0 to RAIL_VISIBLE_ROWS + BUFFER_DOWN
-      // while the user is still on the hero.
       railWinEnd: RAIL_VISIBLE_ROWS + RAIL_BUFFER_DOWN,
       // Current animated Y for the outer container. Bound directly to the
       // template — every scrollTick assignment repositions the whole stack.
-      // Kept in state (not as a plain instance property) so Blits' reactive
-      // template binding actually re-renders on every update.
       animY: 0,
-      // Active requestAnimationFrame id, or 0 if no loop is running. Kept
-      // in state so assignments in scrollTick / ensureScrollLoopRunning are
-      // visible to Blits' reactive system in the same way ContentRail does;
-      // no template reads it directly so there is no re-render overhead.
+      // Active requestAnimationFrame id, or 0 if no loop is running.
       rafHandle: 0,
       // Timestamp of the last rAF tick, used to compute per-frame dt so
-      // easeStep is proportional to real elapsed time and behaviour is
-      // identical at 30/60/120 fps.
+      // easeStep is proportional to real elapsed time.
       lastFrameTime: 0,
     }
   },
   computed: {
+    // True when a hero carousel is present. Drives section index math,
+    // rail Y offsets, and whether the HeroCarousel is mounted at all.
+    hasHero() {
+      return this.hero && this.hero.length > 0
+    },
+    // Wraps the hero data in a 0- or 1-length array so the template :for
+    // truly unmounts HeroCarousel on heroless pages (rather than mounting
+    // it with empty slides, which would still run autoplay timers).
+    heroSlot() {
+      return this.hasHero ? [{ slides: this.hero }] : []
+    },
+    // Where each rail is positioned within the outer container and what
+    // scroll offset lands its title just below the navbar. Computed in a
+    // single pass so rail Y stays authoritative for both template
+    // positioning and scroll target math even when orientations mix.
+    railsWithLayout() {
+      const baseY = this.hasHero ? HERO_HEIGHT : CONTENT_TOP_Y
+      let cursor = baseY
+      return this.rails.map((rail) => {
+        const { railH } = cardDimsFor(rail.orientation)
+        const positioned = { ...rail, _y: cursor, _railH: railH }
+        cursor += railH
+        return positioned
+      })
+    },
+    // Highest valid sectionIndex.
+    maxSectionIndex() {
+      return this.hasHero ? this.rails.length : this.rails.length - 1
+    },
     // Target Y offset (positive number) for the current focused section.
     // ensureScrollLoopRunning negates this when handing to easeStep so
     // higher sectionIndex scrolls the content up the screen.
     scrollOffset() {
-      return getPageScrollOffset(this.sectionIndex, HERO_HEIGHT, RAIL_HEIGHT, NAVBAR_HEIGHT)
+      if (this.hasHero && this.sectionIndex === 0) return 0
+      const railIndex = this.hasHero ? this.sectionIndex - 1 : this.sectionIndex
+      const rail = this.railsWithLayout[railIndex]
+      if (!rail) return 0
+      return rail._y - CONTENT_TOP_Y
     },
   },
   hooks: {
@@ -102,8 +138,6 @@ export default Blits.Component('PageContainer', {
       // Navbar emits this when the user presses Down/Enter to enter the page.
       this.$listen('nav:focus-content', () => this.focusCurrentSection())
     },
-    // Cancel any in-flight rAF so we don't touch state on a component
-    // that's already been torn down (which would throw on the next tick).
     destroy() {
       if (this.rafHandle) {
         cancelAnimationFrame(this.rafHandle)
@@ -113,7 +147,7 @@ export default Blits.Component('PageContainer', {
   },
   input: {
     down() {
-      if (this.sectionIndex >= this.rails.length) return
+      if (this.sectionIndex >= this.maxSectionIndex) return
       this.sectionIndex++
       this.updateRailWindow()
       this.focusCurrentSection()
@@ -136,35 +170,32 @@ export default Blits.Component('PageContainer', {
   methods: {
     // Move focus to whichever section (hero or one of the rails) is now current.
     focusCurrentSection() {
-      const ref = this.sectionIndex === 0 ? 'hero' : `rail${this.sectionIndex - 1}`
-      const target = this.$select(ref)
+      if (this.hasHero && this.sectionIndex === 0) {
+        const hero = this.$select('hero')
+        if (hero) hero.$focus()
+        return
+      }
+      const railIndex = this.hasHero ? this.sectionIndex - 1 : this.sectionIndex
+      const target = this.$select(`rail${railIndex}`)
       if (target) target.$focus()
     },
     // Slide the mounted-rail window so only rails near the focused section
     // are instantiated. Must run BEFORE focusCurrentSection() so the target
-    // rail is guaranteed mounted when $select() looks for it. Same
-    // virtualization idea as ContentRail.rebuildVisibleItems, but Blits'
-    // declarative :range does the actual mount/unmount — we only bump the
-    // window bounds.
+    // rail is guaranteed mounted when $select() looks for it.
     updateRailWindow() {
-      // sectionIndex 0 is the hero; rail indices start at sectionIndex - 1.
-      const railIndex = this.sectionIndex - 1
+      const railIndex = this.hasHero ? this.sectionIndex - 1 : this.sectionIndex
       this.railWinStart = Math.max(0, railIndex - RAIL_BUFFER_UP)
       this.railWinEnd = railIndex + RAIL_VISIBLE_ROWS + RAIL_BUFFER_DOWN
     },
-    // Start the rAF scroll loop if it isn't already running. Called from
-    // every accepted Up/Down press. If the loop is already running, presses
-    // just update sectionIndex (and therefore the scrollOffset computed);
-    // the loop picks up the new target on its next tick with no restart.
+    // Start the rAF scroll loop if it isn't already running.
     ensureScrollLoopRunning() {
       if (this.rafHandle) return
       this.lastFrameTime = performance.now()
       this.rafHandle = requestAnimationFrame((now) => this.scrollTick(now))
     },
     // Per-frame step. Eases animY toward -scrollOffset (target Y for the
-    // current section) using exponential smoothing. Stops (returns without
-    // rescheduling) once the remaining distance is below the sub-pixel
-    // settle threshold, so an idle page does not consume rAF slots.
+    // current section) using exponential smoothing. Stops once the remaining
+    // distance is below the sub-pixel settle threshold.
     scrollTick(now) {
       const dt = now - this.lastFrameTime
       this.lastFrameTime = now

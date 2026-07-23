@@ -1,25 +1,4 @@
-import { createRail, createHeroSlides } from './contentFactory.js'
-
-const hero = createHeroSlides({
-  id: 'shows',
-  slides: [
-    {
-      title: 'Crimson Kingdom',
-      subtitle: 'Season 3 Premiere',
-      description: 'A ruthless dynasty faces its greatest threat yet — from within.',
-    },
-    {
-      title: 'Hidden Legacy',
-      subtitle: 'Limited Series',
-      description: 'Two siblings unravel a century-old family secret hiding in plain sight.',
-    },
-    {
-      title: 'Broken Empire',
-      subtitle: 'New Episodes Weekly',
-      description: 'A once-great city struggles to rebuild after a mysterious catastrophe.',
-    },
-  ],
-})
+import { createRail } from './contentFactory.js'
 
 const rails = [
   createRail({
@@ -56,4 +35,4 @@ const rails = [
   createRail({ id: 'shows-classics', title: 'Timeless TV', genres: ['Drama', 'Comedy'] }),
 ]
 
-export default { hero, rails }
+export default { rails }

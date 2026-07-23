@@ -1,28 +1,4 @@
-import { createRail, createHeroSlides } from './contentFactory.js'
-
-const hero = createHeroSlides({
-  id: 'movies',
-  slides: [
-    {
-      title: 'The Last Summit',
-      subtitle: 'Award-Winning Film',
-      description:
-        'One climber. One mountain. A journey that will test the limits of human endurance.',
-    },
-    {
-      title: 'Emerald Frontier',
-      subtitle: 'Exclusive Original',
-      description:
-        'An expedition into uncharted forests uncovers secrets the world was never meant to find.',
-    },
-    {
-      title: 'Restless Tide',
-      subtitle: 'New This Week',
-      description:
-        'A coastal town is shaken when the sea gives up a mystery decades in the making.',
-    },
-  ],
-})
+import { createRail } from './contentFactory.js'
 
 const rails = [
   createRail({
@@ -59,4 +35,4 @@ const rails = [
   createRail({ id: 'movies-cult', title: 'Cult Classics', genres: ['Cult', 'Drama'] }),
 ]
 
-export default { hero, rails }
+export default { rails }

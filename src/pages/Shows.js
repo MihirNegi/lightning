@@ -4,10 +4,9 @@ import showsData from '../data/shows.js'
 
 export default Blits.Component('Shows', {
   components: { PageContainer },
-  template: '<PageContainer :hero="$hero" :rails="$rails" />',
+  template: '<PageContainer :rails="$rails" />',
   state() {
     return {
-      hero: showsData.hero,
       rails: showsData.rails,
     }
   },

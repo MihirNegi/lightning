@@ -4,10 +4,9 @@ import sportsData from '../data/sports.js'
 
 export default Blits.Component('Sports', {
   components: { PageContainer },
-  template: '<PageContainer :hero="$hero" :rails="$rails" />',
+  template: '<PageContainer :rails="$rails" />',
   state() {
     return {
-      hero: sportsData.hero,
       rails: sportsData.rails,
     }
   },

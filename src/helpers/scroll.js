@@ -3,13 +3,3 @@
 export function getRailScrollOffset(index, cardWidth, gap) {
   return Math.max(index * (cardWidth + gap), 0)
 }
-
-// Extra breathing room between the fixed navbar and a scrolled-to rail's title.
-const NAVBAR_GAP = 24
-
-// Vertical scroll offset for the page content stack based on which section (hero or rail)
-// currently has focus. Rails are scrolled to sit just below the fixed navbar overlay.
-export function getPageScrollOffset(sectionIndex, heroHeight, railHeight, navbarHeight) {
-  if (sectionIndex === 0) return 0
-  return heroHeight + (sectionIndex - 1) * railHeight - navbarHeight - NAVBAR_GAP
-}
