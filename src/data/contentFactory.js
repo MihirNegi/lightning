@@ -59,13 +59,14 @@ function generateTitle(seed) {
 const IMG_DIMS_PORTRAIT = { w: 180, h: 270 }
 const IMG_DIMS_LANDSCAPE = { w: 320, h: 180 }
 
-// Deterministically pick an orientation for a rail from its id hash. Same
-// rail id always resolves to the same orientation across reloads so the
-// visual layout is stable — page scroll math depends on it. Simple parity
-// keeps roughly half of rails in each orientation without any bias per
-// page (the ids are page-prefixed so different pages see different mixes).
+// Orientation is a page-level design decision, not per-rail. Home and
+// Movies show portrait posters (book-cover style); Shows and Sports show
+// landscape thumbnails (16:9). Derived from the id prefix so every rail
+// on a given page renders the same way. An explicit `orientation` option
+// on createRail still overrides this if a specific rail needs to differ.
 function orientationFor(id) {
-  return hashString(id) % 2 === 0 ? 'portrait' : 'landscape'
+  if (id.startsWith('shows-') || id.startsWith('sports-')) return 'landscape'
+  return 'portrait'
 }
 
 // Build a single content rail. Default of 20 cards per rail — the rail
