@@ -7,6 +7,7 @@ const TABS = [
   { label: 'Movies', path: '/movies' },
   { label: 'Shows', path: '/shows' },
   { label: 'Sports', path: '/sports' },
+  { label: 'FPS', path: '/fps' },
 ]
 
 // Top navigation bar. Owns keyboard focus while the user is browsing tabs.
@@ -71,8 +72,8 @@ color="#FFFFFF"
       // Start the rAF-based meter and remember the cancel function so we can
       // stop it in destroy(). Blits state is reactive, so assigning fpsLabel
       // re-renders the readout.
-      this.stopFps = startFpsMeter((label) => {
-        this.fpsLabel = label
+      this.stopFps = startFpsMeter((data) => {
+        this.fpsLabel = data.label
       })
     },
     focus() {

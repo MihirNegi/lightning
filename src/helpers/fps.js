@@ -60,8 +60,12 @@ function estimateCapHz(intervals) {
   return Math.round(1000 / p10)
 }
 
-// Start the meter. onUpdate(label) is called ~3x/second with a formatted
-// string ready to bind to a Blits <Text> content prop.
+// Start the meter. onUpdate(data) is called ~3x/second with a structured
+// object so callers can render the parts they want:
+//   { label, fps, avgFrameMs, maxDt, jankCount, renderer, capHz }
+// label is the pre-formatted string used by the small Navbar readout; the
+// individual fields let the diagnostics page render the fps number huge and
+// the rest as fine print.
 export function startFpsMeter(onUpdate) {
   const renderer = detectRenderer()
   const capSamples = []
@@ -103,14 +107,23 @@ export function startFpsMeter(onUpdate) {
 
     if (now - fpsClock > REFRESH_MS) {
       const avgFrame = fpsMs / fpsN
+      const fps = Math.round(1000 / avgFrame)
       const suffix = capHz !== null ? `${renderer} ${capHz}Hz` : `${renderer} ...`
       const label =
-        `${Math.round(1000 / avgFrame)} fps   ` +
+        `${fps} fps   ` +
         `${avgFrame.toFixed(1)} ms   ` +
         `max ${maxDt.toFixed(1)}   ` +
         `${jankCount} jank   ` +
         suffix
-      onUpdate(label)
+      onUpdate({
+        label,
+        fps,
+        avgFrameMs: avgFrame,
+        maxDt,
+        jankCount,
+        renderer,
+        capHz,
+      })
       fpsMs = 0
       fpsN = 0
       maxDt = 0

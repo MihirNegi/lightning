@@ -35,6 +35,7 @@ export default Blits.Application({
     { path: '/movies', component: () => import('./pages/Movies.js'), options: TAB_ROUTE_OPTIONS },
     { path: '/shows', component: () => import('./pages/Shows.js'), options: TAB_ROUTE_OPTIONS },
     { path: '/sports', component: () => import('./pages/Sports.js'), options: TAB_ROUTE_OPTIONS },
+    { path: '/fps', component: () => import('./pages/Fps.js'), options: TAB_ROUTE_OPTIONS },
   ],
   hooks: {
     ready() {

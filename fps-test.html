@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>FPS Meter</title>
+    <style>
+      html,
+      body {
+        margin: 0;
+        padding: 0;
+        height: 100%;
+        background: #0b0b0b;
+        color: #eaeaea;
+        font-family: monospace;
+        overflow: hidden;
+      }
+      #wrap {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        height: 100%;
+        gap: 24px;
+      }
+      #fps {
+        font-size: 72px;
+        color: #7cf87c;
+      }
+      #detail {
+        font-size: 20px;
+        color: #cfcfcf;
+        white-space: pre;
+        text-align: center;
+      }
+      #hint {
+        font-size: 14px;
+        color: #777;
+        max-width: 800px;
+        text-align: center;
+        padding: 0 24px;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="wrap">
+      <div id="fps">-- fps</div>
+      <div id="detail">measuring...</div>
+      <div id="hint">
+        Wait 5-10 seconds for the numbers to stabilise. The "cap" value is the
+        browser's true rAF ceiling on this device — it cannot be exceeded.
+      </div>
+    </div>
+
+    <script>
+      const REFRESH_MS = 300
+      const JANK_MULTIPLIER = 1.5
+      const JANK_FALLBACK_MS = 25
+      const CAP_MEASURE_FRAMES = 60
+
+      const fpsEl = document.getElementById('fps')
+      const detailEl = document.getElementById('detail')
+
+      function detectRenderer() {
+        try {
+          const c = document.createElement('canvas')
+          if (c.getContext('webgl2')) return 'GL2'
+          if (c.getContext('webgl') || c.getContext('experimental-webgl')) return 'GL1'
+          return '2D'
+        } catch {
+          return '?'
+        }
+      }
+
+      function estimateCapHz(intervals) {
+        const sorted = intervals.slice().sort((a, b) => a - b)
+        const p10 = sorted[Math.floor(sorted.length * 0.1)] || sorted[0]
+        return Math.round(1000 / p10)
+      }
+
+      const renderer = detectRenderer()
+      const capSamples = []
+      let capHz = null
+
+      let last = performance.now()
+      let fpsMs = 0
+      let fpsN = 0
+      let maxDt = 0
+      let jankCount = 0
+      let fpsClock = last
+
+      function tick(now) {
+        const dt = now - last
+        last = now
+
+        if (capHz === null) {
+          capSamples.push(dt)
+          if (capSamples.length >= CAP_MEASURE_FRAMES) {
+            capHz = estimateCapHz(capSamples)
+          }
+        }
+
+        fpsMs += dt
+        fpsN++
+        if (dt > maxDt) maxDt = dt
+
+        const jankThreshold =
+          capHz !== null ? (1000 / capHz) * JANK_MULTIPLIER : JANK_FALLBACK_MS
+        if (dt > jankThreshold) jankCount++
+
+        if (now - fpsClock > REFRESH_MS) {
+          const avgFrame = fpsMs / fpsN
+          const fps = Math.round(1000 / avgFrame)
+          const capLabel = capHz !== null ? capHz + ' Hz' : 'measuring...'
+          fpsEl.textContent = fps + ' fps'
+          detailEl.textContent =
+            'avg ' +
+            avgFrame.toFixed(1) +
+            ' ms   max ' +
+            maxDt.toFixed(1) +
+            ' ms\n' +
+            jankCount +
+            ' jank in last ' +
+            REFRESH_MS +
+            'ms\n' +
+            renderer +
+            '   cap ' +
+            capLabel
+
+          fpsMs = 0
+          fpsN = 0
+          maxDt = 0
+          jankCount = 0
+          fpsClock = now
+        }
+
+        requestAnimationFrame(tick)
+      }
+
+      requestAnimationFrame(tick)
+    </script>
+  </body>
+</html>
