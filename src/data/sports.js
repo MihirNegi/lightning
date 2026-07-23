@@ -53,6 +53,11 @@ const rails = [
     title: 'Upcoming Events',
     genres: ['Football', 'Cricket', 'Tennis'],
   }),
+  createRail({ id: 'sports-hockey', title: 'Hockey', genres: ['Hockey'] }),
+  createRail({ id: 'sports-baseball', title: 'Baseball', genres: ['Baseball'] }),
+  createRail({ id: 'sports-rugby', title: 'Rugby', genres: ['Rugby'] }),
+  createRail({ id: 'sports-cycling', title: 'Cycling', genres: ['Cycling', 'Athletics'] }),
+  createRail({ id: 'sports-swimming', title: 'Swimming', genres: ['Swimming', 'Athletics'] }),
 ]
 
 export default { hero, rails }

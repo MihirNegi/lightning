@@ -46,8 +46,11 @@ function generateTitle(seed) {
   return `${adjective} ${noun}`
 }
 
-// Build a single content rail. Keeps count low by default (15) to stay TV-friendly.
-export function createRail({ id, title, genres, count = 15, withProgress = false }) {
+// Build a single content rail. Default of 20 cards per rail — the rail
+// virtualiser inside ContentRail only mounts the on-screen slice, so the
+// per-rail draw cost is unaffected by count; it only grows the horizontal
+// scroll length. Callers can override count per rail if needed.
+export function createRail({ id, title, genres, count = 20, withProgress = false }) {
   const images = buildPosterImages(id, count)
   const seedBase = hashString(id)
   const items = []

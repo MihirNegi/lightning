@@ -63,6 +63,11 @@ const rails = [
     title: 'Because You Watched',
     genres: ['Action', 'Mystery', 'Drama'],
   }),
+  createRail({ id: 'home-editors', title: "Editor's Picks", genres: ['Drama', 'Comedy'] }),
+  createRail({ id: 'home-late-night', title: 'Late Night', genres: ['Comedy', 'Thriller'] }),
+  createRail({ id: 'home-critics', title: 'Critics Choice', genres: ['Drama', 'Biography'] }),
+  createRail({ id: 'home-hidden-gems', title: 'Hidden Gems', genres: ['Drama', 'Mystery'] }),
+  createRail({ id: 'home-just-added', title: 'Just Added', genres: ['Action', 'Drama'] }),
 ]
 
 export default { hero, rails }

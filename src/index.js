@@ -12,7 +12,7 @@ Blits.Launch(App, 'app', {
   // correct. 30fps gives 33ms per frame — 2x headroom — so pacing is
   // consistent. Consistent 30fps looks noticeably smoother than
   // jittery-almost-60fps for a slow scroll.
-  maxFPS: 30,
+  maxFPS: 60,
   // Texture sampling quality. Trades sharpness for per-frame GPU work.
   // 'low' uses the smallest device pixel ratio — cheapest fragment shader
   // path, fewest texels sampled per quad. Softer edges on desktop dev but

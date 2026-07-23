@@ -58,13 +58,10 @@ export default Blits.Component('Fps', {
     ready() {
       this.stopFps = startFpsMeter((data) => {
         this.fps = String(data.fps)
-        const suffix =
-          data.capHz !== null ? `${data.renderer} ${data.capHz}Hz` : `${data.renderer} ...`
         this.details =
           `${data.avgFrameMs.toFixed(1)} ms/frame   ` +
           `max ${data.maxDt.toFixed(1)} ms   ` +
-          `${data.jankCount} jank   ` +
-          suffix
+          `${data.jankCount} jank`
       })
     },
     destroy() {

@@ -6,5 +6,18 @@
   ],
   "editor.codeActionsOnSave": {
     "source.fixAll.eslint": "explicit"
-  }
+  },
+  // Route format-on-save for JS through eslint (which runs prettier via
+  // eslint-plugin-prettier using the project's eslint.config.js). Without
+  // this, VS Code's default formatter for JS is the Prettier extension,
+  // which uses its own defaults (double quotes, semicolons) and produces
+  // files that then fail the project's lint.
+  "[javascript]": {
+    "editor.defaultFormatter": "dbaeumer.vscode-eslint"
+  },
+  // Belt-and-suspenders: fully disable the Prettier extension for this
+  // workspace. Prettier still runs — but through eslint-plugin-prettier
+  // with the project's config — so there is exactly one source of truth
+  // for formatting rules.
+  "prettier.enable": false
 }

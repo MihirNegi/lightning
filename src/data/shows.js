@@ -49,6 +49,11 @@ const rails = [
     title: 'New Episodes',
     genres: ['Drama', 'Comedy', 'Thriller'],
   }),
+  createRail({ id: 'shows-cooking', title: 'Cooking Shows', genres: ['Cooking', 'Lifestyle'] }),
+  createRail({ id: 'shows-travel', title: 'Travel', genres: ['Travel', 'Documentary'] }),
+  createRail({ id: 'shows-history', title: 'History', genres: ['History', 'Documentary'] }),
+  createRail({ id: 'shows-thriller', title: 'Thriller Series', genres: ['Thriller', 'Mystery'] }),
+  createRail({ id: 'shows-classics', title: 'Timeless TV', genres: ['Drama', 'Comedy'] }),
 ]
 
 export default { hero, rails }

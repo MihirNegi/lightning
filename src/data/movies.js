@@ -52,6 +52,11 @@ const rails = [
     genres: ['Drama', 'Comedy', 'Mystery'],
   }),
   createRail({ id: 'movies-family', title: 'Family Night', genres: ['Family', 'Adventure'] }),
+  createRail({ id: 'movies-war', title: 'War & History', genres: ['War', 'Drama'] }),
+  createRail({ id: 'movies-musical', title: 'Musicals', genres: ['Musical', 'Drama'] }),
+  createRail({ id: 'movies-biopic', title: 'Biopics', genres: ['Biography', 'Drama'] }),
+  createRail({ id: 'movies-mystery', title: 'Mystery', genres: ['Mystery', 'Thriller'] }),
+  createRail({ id: 'movies-cult', title: 'Cult Classics', genres: ['Cult', 'Drama'] }),
 ]
 
 export default { hero, rails }

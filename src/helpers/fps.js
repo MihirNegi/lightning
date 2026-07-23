@@ -1,6 +1,5 @@
-// Frame-timing meter plus one-shot boot diagnostics. Runs its own rAF loop
-// and emits a label ~3x/second in the format:
-//   "60 fps   16.7 ms   max 42.1   3 jank   GL2 60Hz"
+// Frame-timing meter. Runs its own rAF loop and emits a label ~3x/second in
+// the format: "60 fps   16.7 ms   max 42.1   3 jank"
 //
 // Averages hide jank: a 50ms stutter once a second barely shifts the mean but
 // is what the user actually sees. So the label carries three separate numbers
@@ -9,14 +8,10 @@
 // least one frame). Reading the three together tells you whether the app is
 // consistently slow (low fps, low max) or spiky (fine fps, high max + janks).
 //
-// Diagnostic suffix is fixed after boot and answers two TV-specific questions:
-//   - GL2 / GL1 / 2D — which renderer the browser actually gave us. Old TV
-//     browsers can silently fall back to WebGL1 or Canvas 2D, which is a
-//     major perf hit vs WebGL2.
-//   - NNHz — the browser's true rAF cap, measured as the minimum stable
-//     frame interval over the first CAP_MEASURE_FRAMES ticks. Some TV
-//     browsers cap rAF at 30Hz to save power; when that's the case, no
-//     amount of JS optimisation can push the fps above 30.
+// The renderer (GL2/GL1/2D) and detected browser rAF cap are also sampled at
+// boot and exposed on the data object — the cap is used internally to scale
+// the jank threshold correctly on 30Hz-capped browsers — but they are not
+// included in the label string. Consumers can render them if they want.
 //
 // Returns a stop() function to cancel the loop (call from a destroy hook).
 const REFRESH_MS = 300
@@ -108,13 +103,11 @@ export function startFpsMeter(onUpdate) {
     if (now - fpsClock > REFRESH_MS) {
       const avgFrame = fpsMs / fpsN
       const fps = Math.round(1000 / avgFrame)
-      const suffix = capHz !== null ? `${renderer} ${capHz}Hz` : `${renderer} ...`
       const label =
         `${fps} fps   ` +
         `${avgFrame.toFixed(1)} ms   ` +
         `max ${maxDt.toFixed(1)}   ` +
-        `${jankCount} jank   ` +
-        suffix
+        `${jankCount} jank`
       onUpdate({
         label,
         fps,
