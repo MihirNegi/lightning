@@ -1,8 +1,24 @@
 import Blits from '@lightningjs/blits'
-import { HERO_HEIGHT, NAVBAR_HEIGHT, NAVBAR_TOP_GAP, cardDimsFor } from '../constants/layout.js'
+import {
+  CARD_GAP,
+  CONTENT_PADDING_X,
+  HERO_HEIGHT,
+  NAVBAR_HEIGHT,
+  NAVBAR_TOP_GAP,
+  cardDimsFor,
+} from '../constants/layout.js'
 import { PAGE_SCROLL_TAU_MS, SETTLE_PX, easeStep } from '../helpers/animations.js'
 import HeroCarousel from './HeroCarousel.js'
-import ContentRail from './ContentRail.js'
+import ContentRail, { CARD_OFFSET_X, FRAME_MARGIN, PEEK_LEFT_FRACTION } from './ContentRail.js'
+
+// Rail's inner title strip height. ContentRail places its clip at y=52
+// below the rail's origin; the frame overlay lines up with the card
+// inside the clip using this + the card's own inner offset.
+const RAIL_TITLE_STRIP_H = 52
+// The clip's inner top padding above the card (from ContentRail's
+// CARD_OFFSET_Y). Duplicated as a literal here so the overlay does not
+// need to import a private constant; kept in sync manually if tuned.
+const CARD_INNER_TOP_Y = 8
 
 // Rail virtualization window: how many rails to keep mounted around the
 // focused section. Blits' :range directive uses [from, to) semantics
@@ -49,19 +65,33 @@ export default Blits.Component('PageContainer', {
     ContentRail,
   },
   template: `
-    <Element :y="$animY">
-      <HeroCarousel ref="hero" :show="$hasHero" :slides="$hero" />
-      <ContentRail
-        :for="(rail, index) in $railsWithLayout"
-        :range="{from: $railWinStart, to: $railWinEnd}"
-        key="$rail.id"
-        :ref="'rail' + $index"
-        x="64"
-        :y="$rail._y"
-        :title="$rail.title"
-        :items="$rail.items"
-        :orientation="$rail.orientation"
-      />
+    <Element>
+      <Element :y="$animY">
+        <HeroCarousel ref="hero" :show="$hasHero" :slides="$hero" />
+        <ContentRail
+          :for="(rail, index) in $railsWithLayout"
+          :range="{from: $railWinStart, to: $railWinEnd}"
+          key="$rail.id"
+          :ref="'rail' + $index"
+          x="64"
+          :y="$rail._y"
+          :title="$rail.title"
+          :items="$rail.items"
+          :orientation="$rail.orientation"
+        />
+      </Element>
+      <Element
+        :x.transition="{value: $frameX, duration: 200, easing: 'ease-out'}"
+        :y="$frameY"
+        :w.transition="{value: $frameW, duration: 200, easing: 'ease-out'}"
+        :h.transition="{value: $frameH, duration: 200, easing: 'ease-out'}"
+        :alpha.transition="{value: $isRailFocused ? 1 : 0, duration: 200, easing: 'ease-out'}"
+      >
+        <Element x="0" y="0" :w="$frameW" :h="$frameMargin" color="#FFFFFF" />
+        <Element x="0" :y="$frameBottomBarY" :w="$frameW" :h="$frameMargin" color="#FFFFFF" />
+        <Element x="0" y="0" :w="$frameMargin" :h="$frameH" color="#FFFFFF" />
+        <Element :x="$frameRightBarX" y="0" :w="$frameMargin" :h="$frameH" color="#FFFFFF" />
+      </Element>
     </Element>
   `,
   props: {
@@ -127,6 +157,69 @@ export default Blits.Component('PageContainer', {
       const rail = this.railsWithLayout[railIndex]
       if (!rail) return 0
       return rail._y - CONTENT_TOP_Y
+    },
+    // ---- Global focus-frame overlay --------------------------------------
+    // The frame lives OUTSIDE the animated (:y=$animY) container so it stays
+    // at fixed absolute screen coordinates. Rails slide vertically under it
+    // (page scroll), cards slide horizontally under it (rail scroll), and
+    // the frame itself never moves — which is what makes the app read as
+    // "static focus, content flowing" the way the Rust reference does.
+    //
+    // The frame's size follows the currently focused rail's card dimensions
+    // (portrait vs landscape resolve differently); w/h transitions in the
+    // template ease that resize so the frame doesn't snap when moving
+    // between rails of different orientation.
+    isRailFocused() {
+      if (this.hasHero && this.sectionIndex === 0) return false
+      return this.rails.length > 0
+    },
+    focusedRail() {
+      if (!this.isRailFocused) return null
+      const railIndex = this.hasHero ? this.sectionIndex - 1 : this.sectionIndex
+      return this.railsWithLayout[railIndex] || null
+    },
+    focusedRailDims() {
+      const rail = this.focusedRail
+      return cardDimsFor(rail ? rail.orientation : 'portrait')
+    },
+    frameMargin() {
+      return FRAME_MARGIN
+    },
+    // Card step for the focused rail's orientation. Used to place the
+    // frame at the peek slot — same offset the rail's scroll target uses,
+    // so the focused card lands exactly where the frame sits.
+    focusedCardStep() {
+      return this.focusedRailDims.cardW + CARD_GAP
+    },
+    frameW() {
+      return this.focusedRailDims.cardW + FRAME_MARGIN * 2
+    },
+    frameH() {
+      return this.focusedRailDims.cardH + FRAME_MARGIN * 2
+    },
+    // Absolute screen x of the frame's top-left corner. Aligns to the card
+    // that sits at the peek slot within the rail: rail x (CONTENT_PADDING_X)
+    // + card inset (CARD_OFFSET_X) + peek offset (PEEK_LEFT_FRACTION * step)
+    // - FRAME_MARGIN so the frame is 5px OUTSIDE the card on the left.
+    frameX() {
+      return (
+        CONTENT_PADDING_X + CARD_OFFSET_X + PEEK_LEFT_FRACTION * this.focusedCardStep - FRAME_MARGIN
+      )
+    },
+    // Absolute screen y of the frame's top-left corner. Sits at the fixed
+    // "row of focus": below the navbar + gap, past the rail title strip,
+    // at the card's inner top offset, minus the frame margin so the frame
+    // is 5px OUTSIDE the card on top.
+    frameY() {
+      return CONTENT_TOP_Y + RAIL_TITLE_STRIP_H + CARD_INNER_TOP_Y - FRAME_MARGIN
+    },
+    // The bottom-bar's y within the frame element (frameH - FRAME_MARGIN).
+    // Templates cannot compute this inline, so exposed as its own field.
+    frameBottomBarY() {
+      return this.frameH - FRAME_MARGIN
+    },
+    frameRightBarX() {
+      return this.frameW - FRAME_MARGIN
     },
   },
   hooks: {
