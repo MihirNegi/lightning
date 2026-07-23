@@ -1,5 +1,12 @@
 import { buildPosterImages, buildHeroImages } from './images.js'
 
+// Shared sample video for the Meta -> Player flow. A small mp4 kept on
+// Blender's public mirror (Big Buck Bunny, ~5MB, CORS-friendly). Every
+// item uses the same URL for the demo — real content plumbing would
+// pass a per-item HLS/DASH manifest instead.
+const SAMPLE_VIDEO_URL =
+  'https://download.blender.org/peach/bigbuckbunny_movies/BigBuckBunny_320x180.mp4'
+
 const ADJECTIVES = [
   'Silent',
   'Crimson',
@@ -55,12 +62,19 @@ export function createRail({ id, title, genres, count = 20, withProgress = false
   const seedBase = hashString(id)
   const items = []
   for (let i = 0; i < count; i++) {
+    const genre = genres[i % genres.length]
     items.push({
       id: `${id}-${i}`,
       title: generateTitle(seedBase + i),
-      genre: genres[i % genres.length],
+      genre,
       image: images[i],
       progress: withProgress ? 0.15 + ((i * 13) % 70) / 100 : undefined,
+      // Description is synthesized from the genre so every card has copy
+      // to show on the Meta screen without needing a per-item write-up.
+      description:
+        `An engrossing ${genre.toLowerCase()} feature. Placeholder synopsis for the demo — ` +
+        'the Meta screen wraps this into a two-column layout with the poster on the left.',
+      video: SAMPLE_VIDEO_URL,
     })
   }
   return { id, title, items }
@@ -72,6 +86,7 @@ export function createHeroSlides({ id, slides }) {
   return slides.map((slide, index) => ({
     id: `${id}-hero-${index}`,
     image: images[index],
+    video: SAMPLE_VIDEO_URL,
     ...slide,
   }))
 }

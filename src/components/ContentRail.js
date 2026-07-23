@@ -62,7 +62,13 @@ export default Blits.Component('ContentRail', {
       <Text
         :content="$title"
         size="32"
-:color="$$hasFocus ? '#FFFFFF' : '#AAAAAA'"
+        color="#AAAAAA"
+      />
+      <Text
+        :content="$title"
+        size="32"
+        color="#FFFFFF"
+        :alpha.transition="{value: $$hasFocus ? 1 : 0, duration: 200, easing: 'ease-out'}"
       />
       <Element y="52" w="1792" h="334" clipping="true">
         <Element :x="-$scrollActual">
@@ -160,7 +166,19 @@ export default Blits.Component('ContentRail', {
       this.ensureScrollLoopRunning()
     },
     enter() {
-      // No-op for now — hook up navigation/playback later.
+      const item = this.items[this.selectedIndex]
+      if (!item) return
+      // Rail items expose `genre` (Comedy, Drama, ...) but the Meta screen
+      // reads a `subtitle` prop. Mapping here keeps Meta agnostic to where
+      // the navigation came from — the hero carousel already ships a real
+      // subtitle field, so both callers land on the same prop shape.
+      this.$router.to('/meta', {
+        title: item.title,
+        subtitle: item.genre,
+        description: item.description,
+        image: item.image,
+        video: item.video,
+      })
     },
   },
   methods: {

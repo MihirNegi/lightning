@@ -12,7 +12,7 @@ Blits.Launch(App, 'app', {
   // correct. 30fps gives 33ms per frame — 2x headroom — so pacing is
   // consistent. Consistent 30fps looks noticeably smoother than
   // jittery-almost-60fps for a slow scroll.
-  maxFPS: 60,
+  maxFPS: 45,
   // Texture sampling quality. Trades sharpness for per-frame GPU work.
   // 'low' uses the smallest device pixel ratio — cheapest fragment shader
   // path, fewest texels sampled per quad. Softer edges on desktop dev but
@@ -31,7 +31,12 @@ Blits.Launch(App, 'app', {
   // eviction at 70% (84 MB); cleanupInterval polls every 3s; strict evicts
   // aggressively once target is exceeded rather than waiting for max.
   gpuMemory: { max: 120e6, target: 0.7, cleanupInterval: 3000, strict: true },
-  canvasColor: '#0B0B0B',
+  // Canvas clears fully transparent so the Player screen can composite the
+  // native <video> element (positioned behind the canvas in index.html)
+  // through the canvas. On every non-Player route the App root Element
+  // fills the stage with an opaque #0B0B0B, so the visible background
+  // colour is unchanged.
+  canvasColor: 'rgba(0, 0, 0, 0)',
   // No custom fonts registered — Text falls back to the renderer's built-in
   // default (system sans-serif). MSDF is cheap per-glyph but requires atlas
   // texture upload plus a shader path on the GPU; on constrained TV
