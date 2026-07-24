@@ -1,6 +1,6 @@
 import Blits from '@lightningjs/blits'
 import { CARD_GAP, CONTENT_PADDING_X, STAGE_W, cardDimsFor } from '../constants/layout.js'
-import { HOLD_THROTTLE_RAIL_MS, SETTLE_PX, easeStep } from '../helpers/animations.js'
+import { SETTLE_PX, easeStep } from '../helpers/animations.js'
 import PosterCard from './PosterCard.js'
 
 // Lazy-mount window: how many cards to render around the current selection.
@@ -117,9 +117,6 @@ export default Blits.Component('ContentRail', {
       // computed here would be evaluated once at mount and never update,
       // so scrolling past the initial window would show an empty rail.
       visibleItems: [],
-      // Timestamp of the last accepted directional press, used for
-      // hold-throttling.
-      lastInputAt: 0,
       // Active requestAnimationFrame id, or 0 if no loop is running.
       // Stored on the instance (not as reactive state) so we don't
       // trigger reactivity dispatch every time the loop starts/stops.
@@ -190,8 +187,13 @@ export default Blits.Component('ContentRail', {
     },
   },
   input: {
+    // No hold throttle on Left/Right — see the block comment in
+    // helpers/animations.js. Held-key auto-repeat advances selectedIndex
+    // at the browser's native rate so the horizontal scroll target
+    // (scrollTarget) advances as a smooth ramp, and the exp-smoothing
+    // ease chasing that ramp produces near-constant per-frame motion.
+    // Matches Rust's per-rail scroll model exactly.
     left() {
-      if (!this.acceptHoldInput()) return
       if (this.selectedIndex <= 0) return
       this.selectedIndex--
       this.updateScrollTarget()
@@ -199,7 +201,6 @@ export default Blits.Component('ContentRail', {
       this.ensureScrollLoopRunning()
     },
     right() {
-      if (!this.acceptHoldInput()) return
       if (this.selectedIndex >= this.items.length - 1) return
       this.selectedIndex++
       this.updateScrollTarget()
@@ -277,17 +278,6 @@ export default Blits.Component('ContentRail', {
         slice.push({ ...this.items[i], posX: i * step })
       }
       this.visibleItems = slice
-    },
-    // Returns true if enough time has passed since the last accepted
-    // press. Records the current time so the next call is throttled.
-    // Matched to TIME_PER_CARD_MS via HOLD_THROTTLE_RAIL_MS so held-key
-    // input produces exactly one accepted press per card-time interval
-    // — feeding the RAF loop targets at the same rate it moves.
-    acceptHoldInput() {
-      const now = Date.now()
-      if (now - this.lastInputAt < HOLD_THROTTLE_RAIL_MS) return false
-      this.lastInputAt = now
-      return true
     },
   },
 })

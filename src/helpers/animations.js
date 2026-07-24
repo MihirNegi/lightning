@@ -23,27 +23,18 @@ export const DURATION = {
 // instead the user sees the focus move one step at a time.
 export const HOLD_THROTTLE_MS = 250
 
-// Rail-specific throttle. Under sustained hold, ContentRail accepts one
-// Left/Right press per 150ms; each press advances scrollTarget by one card
-// width, and the exponential-smoothing rAF loop eases scrollActual toward
-// that target with velocity proportional to remaining distance. 150ms is
-// tuned so held scrolling feels continuous (targets keep just enough ahead
-// of the ease that motion never stalls) without racing past cards the eye
-// cannot register.
-export const HOLD_THROTTLE_RAIL_MS = 150
-
-// PageContainer's Up/Down input intentionally has NO hold throttle. Held-key
-// browser auto-repeat (~30/sec) drives sectionIndex directly, so the vertical
-// scroll target Y advances as a smooth ramp (~12,300 px/sec at 410px/rail),
-// not as discrete 410px jumps every 220ms the way our earlier throttled
-// version produced. Exponential smoothing tracking a smoothly-moving target
+// Neither the page's Up/Down input (PageContainer) nor a rail's Left/Right
+// input (ContentRail) is hold-throttled. Held-key browser auto-repeat
+// (~30/sec) drives sectionIndex / selectedIndex directly, so both scroll
+// targets advance as smooth ramps rather than as discrete jumps every N
+// milliseconds. Exponential smoothing tracking a smoothly-moving target
 // reaches a steady state where position velocity equals target velocity —
 // per-frame movement becomes near-constant, and the eye reads that as
 // "flow" rather than a staircase of eased steps. This matches the Rust
-// reference's motion model exactly (Rust does not throttle input either).
-// On release, target stops advancing and position eases the residual
-// steady-state lag (~2.7 rails at tau=90) to zero — giving the momentum-
-// like coast-and-settle that a throttled model can't produce.
+// reference's motion model exactly (Rust throttles neither axis and uses
+// SMOOTH_TAU_MS = 90 for both). On release, target stops advancing and
+// position eases the residual steady-state lag to zero — giving the
+// momentum-like coast-and-settle that a throttled model can't produce.
 
 // Exponential-smoothing time constants (in milliseconds) for the rAF scroll
 // loops in ContentRail (horizontal) and PageContainer (vertical). Each loop
