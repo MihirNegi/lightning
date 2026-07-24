@@ -6,9 +6,9 @@
 // numbers per window:
 //   - average fps (baseline throughput)
 //   - average frame ms (matches fps but easier to compare vs a vsync target)
-//   - avg work ms per frame (how much each frame overran its vsync budget —
-//     the closest analog to the Rust reference's `engine.tick()` work time
-//     we can measure without a Blits render hook; see below)
+//   - avg work ms per frame (main-thread busy time per frame — the closest
+//     analog to the Rust reference's `engine.tick()` time we can measure
+//     without a Blits render hook; see below)
 //   - max frame ms (peak jank magnitude in the window)
 //   - jank count (frames > 1.5x vsync, i.e. dropped at least one frame)
 // Reading them together tells you whether the app is consistently slow
@@ -16,17 +16,22 @@
 // under-budget (low work, low max, high fps).
 //
 // About "work ms": Blits does its rendering inside an internal loop we can't
-// wrap with performance.now(), so we can't measure JS+render work directly.
-// Instead we treat each frame's overshoot beyond its vsync period (dt minus
-// 1000/capHz) as "work" — because a frame only takes longer than vsync when
-// the main thread was busy through the previous vblank. Averaged across the
-// window this reports "on average, each frame ran X ms over its budget".
-// 0 = perfect (frames land right on vsync), <2 ms = healthy, >5 ms = the
-// scroll or a hidden background job is chewing frame budget.
+// wrap with performance.now(), so we can't time engine.tick() the way the
+// Rust reference does. Instead we use the "post-a-message at frame start"
+// trick: a MessageChannel message posted from inside the rAF callback is
+// dispatched as a macrotask, and macrotasks only run after the browser has
+// finished the current frame's script + layout + paint work. So the delta
+// (dispatch time - frame start) is a reasonable estimate of how much
+// main-thread time each frame actually consumed — including Blits'
+// internal render pass, which happens on the main thread synchronously
+// with our rAF tick. Non-zero even on idle (Blits still paints), and
+// fluctuates with GC / text rasterisation / texture upload — matching the
+// character of the Rust engine.tick() readout.
 //
 // The renderer (GL2/GL1/2D) and detected browser rAF cap are also sampled at
-// boot and exposed on the data object — the cap is used to compute the work
-// overrun AND to scale the jank threshold correctly on 30Hz-capped browsers.
+// boot and exposed on the data object — the cap scales the jank threshold
+// correctly on 30Hz-capped browsers so a "healthy" frame there isn't
+// flagged as a drop.
 //
 // Returns a stop() function to cancel the loop (call from a destroy hook).
 const REFRESH_MS = 300
@@ -40,11 +45,6 @@ const JANK_MULTIPLIER = 1.5
 // Fallback jank threshold used before the boot cap sampler has locked in
 // capHz. 25ms corresponds to 1.5x a 60Hz period — the common case.
 const JANK_FALLBACK_MS = 25
-
-// Fallback vsync period used to compute work-overrun until the boot cap
-// sampler locks in capHz. 60Hz = 16.7ms is the common desktop value; the
-// number gets replaced once capHz is known.
-const VSYNC_FALLBACK_MS = 1000 / 60
 
 // Number of rAF ticks to sample before locking in the "cap" reading. The
 // browser can only slip slower than the true vsync period, never faster, so
@@ -96,8 +96,22 @@ export function startFpsMeter(onUpdate) {
   let rafId = 0
   let cancelled = false
 
+  // Post-task probe. postMessage on a MessageChannel schedules a macrotask,
+  // and macrotasks queued from inside a rAF callback don't run until AFTER
+  // the browser finishes that frame's script + layout + paint. So the
+  // delta between the frame's start time and the moment onmessage fires
+  // is a reasonable estimate of how much main-thread time the frame
+  // actually consumed — including Blits' internal render pass, which we
+  // otherwise can't wrap.
+  let frameStart = 0
+  let lastWorkMs = 0
+  const workChannel = new MessageChannel()
+  workChannel.port1.onmessage = () => {
+    lastWorkMs = performance.now() - frameStart
+  }
+
   // rAF tick: measure dt, feed the boot cap sampler until it locks in, and
-  // every REFRESH_MS emit a label with avg fps, avg work overrun, worst
+  // every REFRESH_MS emit a label with avg fps, avg work time, worst
   // frame in the window, and jank count. Note dt is derived from rAF
   // timestamps — if the main thread stalls for 100ms, rAF misses ~6 vsyncs
   // and the next dt reflects the full stall, so this genuinely catches
@@ -106,6 +120,7 @@ export function startFpsMeter(onUpdate) {
     if (cancelled) return
     const dt = now - last
     last = now
+    frameStart = now
 
     if (capHz === null) {
       capSamples.push(dt)
@@ -118,16 +133,15 @@ export function startFpsMeter(onUpdate) {
     fpsN++
     if (dt > maxDt) maxDt = dt
 
-    // Per-frame vsync budget. Before capHz locks, use the 60Hz fallback so
-    // early-boot samples aren't skewed. Any dt above this is "extra" work
-    // the main thread stole beyond the frame's vsync slot.
-    const vsyncMs = capHz !== null ? 1000 / capHz : VSYNC_FALLBACK_MS
-    const overrun = dt > vsyncMs ? dt - vsyncMs : 0
-    workMsAccum += overrun
+    // Accumulate the previous frame's measured work. lastWorkMs was set by
+    // the onmessage handler after that frame's paint completed; it's zero
+    // on the very first frame (no prior probe fired), which biases the
+    // first window's average slightly low but is invisible after boot.
+    workMsAccum += lastWorkMs
 
     // Jank threshold scales with the detected refresh cap. Before cap
     // locks, use the 60Hz fallback so early-boot jank still gets flagged.
-    const jankThresholdMs = capHz !== null ? vsyncMs * JANK_MULTIPLIER : JANK_FALLBACK_MS
+    const jankThresholdMs = capHz !== null ? (1000 / capHz) * JANK_MULTIPLIER : JANK_FALLBACK_MS
     if (dt > jankThresholdMs) jankCount++
 
     if (now - fpsClock > REFRESH_MS) {
@@ -158,6 +172,9 @@ export function startFpsMeter(onUpdate) {
       fpsClock = now
     }
 
+    // Post AFTER accounting so this frame's paint work is what the next
+    // rAF observes as lastWorkMs.
+    workChannel.port2.postMessage(null)
     rafId = requestAnimationFrame(frame)
   }
 
@@ -166,5 +183,6 @@ export function startFpsMeter(onUpdate) {
   return () => {
     cancelled = true
     if (rafId) cancelAnimationFrame(rafId)
+    workChannel.port1.onmessage = null
   }
 }
