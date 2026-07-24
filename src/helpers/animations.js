@@ -32,6 +32,17 @@ export const HOLD_THROTTLE_MS = 250
 // cannot register.
 export const HOLD_THROTTLE_RAIL_MS = 150
 
+// Page-scroll throttle. Under sustained hold, PageContainer accepts one
+// Up/Down press per 220ms; each press advances sectionIndex by one rail
+// (~370px vertical). Larger than the rail throttle because a rail row is
+// twice the visual distance of a single card and needs proportionally
+// more time to be readable during transit. Without this throttle,
+// browser/OS key auto-repeat (~30/sec) hammers sectionIndex faster than
+// the 90ms-tau ease can catch up, so the target runs far ahead of the
+// visible position and the eye reads it as elastic lag rather than
+// continuous motion.
+export const HOLD_THROTTLE_PAGE_MS = 220
+
 // Exponential-smoothing time constants (in milliseconds) for the rAF scroll
 // loops in ContentRail (horizontal) and PageContainer (vertical). Each loop
 // calls easeStep() every frame; TAU controls the perceived "weight".

@@ -6,7 +6,12 @@ import {
   NAVBAR_TOP_GAP,
   cardDimsFor,
 } from '../constants/layout.js'
-import { PAGE_SCROLL_TAU_MS, SETTLE_PX, easeStep } from '../helpers/animations.js'
+import {
+  HOLD_THROTTLE_PAGE_MS,
+  PAGE_SCROLL_TAU_MS,
+  SETTLE_PX,
+  easeStep,
+} from '../helpers/animations.js'
 import HeroCarousel from './HeroCarousel.js'
 import ContentRail, { FRAME_MARGIN } from './ContentRail.js'
 
@@ -114,6 +119,12 @@ export default Blits.Component('PageContainer', {
       // Timestamp of the last rAF tick, used to compute per-frame dt so
       // easeStep is proportional to real elapsed time.
       lastFrameTime: 0,
+      // Timestamp of the last accepted Up/Down press. Held-key auto-repeat
+      // fires ~30/sec, which used to move sectionIndex far ahead of the
+      // 90ms-tau ease and produce visible elastic lag. acceptHoldInput()
+      // gates presses to HOLD_THROTTLE_PAGE_MS spacing so target advances
+      // at a rate the visual ease can keep up with.
+      lastInputAt: 0,
     }
   },
   computed: {
@@ -227,20 +238,18 @@ export default Blits.Component('PageContainer', {
   },
   input: {
     down() {
+      if (!this.acceptHoldInput()) return
       if (this.sectionIndex >= this.maxSectionIndex) return
       this.sectionIndex++
-      this.updateRailWindow()
-      this.focusCurrentSection()
       this.ensureScrollLoopRunning()
     },
     up() {
+      if (!this.acceptHoldInput()) return
       if (this.sectionIndex <= 0) {
         this.$emit('nav:focus-navbar')
         return
       }
       this.sectionIndex--
-      this.updateRailWindow()
-      this.focusCurrentSection()
       this.ensureScrollLoopRunning()
     },
     back() {
@@ -248,7 +257,23 @@ export default Blits.Component('PageContainer', {
     },
   },
   methods: {
-    // Move focus to whichever section (hero or one of the rails) is now current.
+    // Returns true if enough time has passed since the last accepted press.
+    // Records the current time so the next call is throttled. Matches the
+    // pattern in Navbar / HeroCarousel / ContentRail so held-key input on
+    // any axis produces one accepted press per throttle interval, feeding
+    // the ease at the same rate it can visually resolve.
+    acceptHoldInput() {
+      const now = Date.now()
+      if (now - this.lastInputAt < HOLD_THROTTLE_PAGE_MS) return false
+      this.lastInputAt = now
+      return true
+    },
+    // Move focus to whichever section (hero or one of the rails) is now
+    // current. Called from the nav:focus-content entry path (immediate) and
+    // from scrollTick's settle branch (deferred until motion completes) so
+    // Blits' focus swap (and its 200ms title-fade transition on both the
+    // outgoing and incoming rail) fires exactly once per hold-burst rather
+    // than once per accepted press.
     focusCurrentSection() {
       if (this.hasHero && this.sectionIndex === 0) {
         const hero = this.$select('hero')
@@ -259,13 +284,31 @@ export default Blits.Component('PageContainer', {
       const target = this.$select(`rail${railIndex}`)
       if (target) target.$focus()
     },
-    // Slide the mounted-rail window so only rails near the focused section
-    // are instantiated. Must run BEFORE focusCurrentSection() so the target
-    // rail is guaranteed mounted when $select() looks for it.
+    // Slide the mounted-rail window based on the CURRENT VISUAL scroll
+    // position (animY), not the target sectionIndex. Called every scrollTick
+    // frame, so as animY eases toward the target the window follows —
+    // off-screen rails mount just before they enter the viewport, and by
+    // settle-time the window already contains the destination rail. This
+    // replaces the previous "update once per input" approach, which under
+    // sustained hold churned mounts on every accepted press even after the
+    // eventual final window was known.
     updateRailWindow() {
-      const railIndex = this.hasHero ? this.sectionIndex - 1 : this.sectionIndex
-      this.railWinStart = Math.max(0, railIndex - RAIL_BUFFER_UP)
-      this.railWinEnd = railIndex + RAIL_VISIBLE_ROWS + RAIL_BUFFER_DOWN
+      const targetY = CONTENT_TOP_Y - this.animY
+      const rails = this.railsWithLayout
+      if (rails.length === 0) return
+      let currentRail = 0
+      let bestDelta = Infinity
+      for (let i = 0; i < rails.length; i++) {
+        const delta = Math.abs(rails[i]._y - targetY)
+        if (delta < bestDelta) {
+          bestDelta = delta
+          currentRail = i
+        }
+      }
+      const newStart = Math.max(0, currentRail - RAIL_BUFFER_UP)
+      const newEnd = currentRail + RAIL_VISIBLE_ROWS + RAIL_BUFFER_DOWN
+      if (newStart !== this.railWinStart) this.railWinStart = newStart
+      if (newEnd !== this.railWinEnd) this.railWinEnd = newEnd
     },
     // Start the rAF scroll loop if it isn't already running.
     ensureScrollLoopRunning() {
@@ -273,9 +316,12 @@ export default Blits.Component('PageContainer', {
       this.lastFrameTime = performance.now()
       this.rafHandle = requestAnimationFrame((now) => this.scrollTick(now))
     },
-    // Per-frame step. Eases animY toward -scrollOffset (target Y for the
-    // current section) using exponential smoothing. Stops once the remaining
-    // distance is below the sub-pixel settle threshold.
+    // Per-frame step. Eases animY toward -scrollOffset using exponential
+    // smoothing, then slides the rail-mount window to follow the new
+    // visual position. On settle, calls focusCurrentSection() once so
+    // Blits' focus swap fires exactly once per hold-burst (rather than
+    // once per accepted press) — cuts overlapping 200ms title fades from
+    // one-per-press down to one-per-settle.
     scrollTick(now) {
       const dt = now - this.lastFrameTime
       this.lastFrameTime = now
@@ -284,9 +330,12 @@ export default Blits.Component('PageContainer', {
       if (Math.abs(remaining) < SETTLE_PX) {
         this.animY = target
         this.rafHandle = 0
+        this.updateRailWindow()
+        this.focusCurrentSection()
         return
       }
       this.animY = easeStep(this.animY, target, dt, PAGE_SCROLL_TAU_MS)
+      this.updateRailWindow()
       this.rafHandle = requestAnimationFrame((next) => this.scrollTick(next))
     },
   },

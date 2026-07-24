@@ -4,12 +4,10 @@ import { CONTENT_PADDING_X } from '../constants/layout.js'
 // A single hero banner slide: full-bleed background image, bottom-up dark
 // gradient for text readability, and the slide copy on the left.
 //
-// Position is fully driven by the parent HeroCarousel via the slotX prop —
-// the parent computes each slide's target x based on currentIndex, prevIndex
-// and direction (see slidesWithSlot). This component just tweens its root x
-// toward slotX over slotDuration ms. Duration is 0 for resting off-screen
-// slides so they snap to the waiting position; the current + previous slides
-// get the full hero duration and produce the directional slide.
+// Position is set directly by the parent HeroCarousel via the x prop.
+// HeroCarousel lays all slides side-by-side in a filmstrip and scrolls the
+// whole strip with a rAF ease loop — individual slides do not tween their
+// own x, they just sit at the position the parent gives them.
 //
 // Template pixel values are literals (Blits templates cannot interpolate JS).
 // 1920x880 matches STAGE_W and HERO_HEIGHT in constants/layout.js.
@@ -18,9 +16,9 @@ import { CONTENT_PADDING_X } from '../constants/layout.js'
 export default Blits.Component('HeroSlide', {
   template: `
     <Element
+      :x="$x"
       w="1920"
       h="880"
-      :x.transition="{value: $slotX, duration: $slotDuration, easing: 'cubic-bezier(0.22, 1, 0.36, 1)'}"
     >
       <Element w="1920" h="880" :src="$imageSrc" fit="cover" color="#FFFFFF" />
       <Element w="1920" h="880" color="{bottom: '#0B0B0B', top: 'rgba(11, 11, 11, 0.15)'}" />
@@ -52,13 +50,10 @@ export default Blits.Component('HeroSlide', {
     title: '',
     subtitle: '',
     description: '',
-    // Absolute x position for this slide's root, in stage px. -1920 = fully
-    // off to the left, 0 = on-screen, +1920 = fully off to the right.
-    slotX: 0,
-    // Milliseconds for the :x.transition. 0 makes the panel snap (used for
-    // off-screen slides waiting on the incoming side); DURATION.hero is used
-    // for the current and outgoing slides so the transition is visible.
-    slotDuration: 0,
+    // Absolute x position of this slide inside HeroCarousel's scrolling
+    // strip, in stage px. The strip lays slide i at i * STAGE_W and adds
+    // clones at -STAGE_W and N*STAGE_W so the wrap is visually continuous.
+    x: 0,
   },
   computed: {
     // Image src descriptor with keepAlive so the hero texture survives this
@@ -70,8 +65,8 @@ export default Blits.Component('HeroSlide', {
     imageSrc() {
       return { src: this.image, keepAlive: true }
     },
-    // Copy is now positioned by CONTENT_PADDING_X — the whole panel slides,
-    // so a redundant per-slide copy-slide was removed with the alpha fade.
+    // Copy is positioned by CONTENT_PADDING_X so titles sit flush with the
+    // rail titles below the hero.
     copyX() {
       return CONTENT_PADDING_X
     },
