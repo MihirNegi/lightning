@@ -24,13 +24,17 @@ Blits.Launch(App, 'app', {
   // scrolling), but a smaller value means fewer just-offscreen rails get
   // drawn every frame. 100 mirrors the reference tuning; 150 was drawing
   // ~one extra rail worth of work per frame for no visible benefit on TV.
-  viewportMargin: 50,
-  // GPU memory pressure controls. TV set-top boxes have tight VRAM; without
-  // these Blits accumulates textures over long sessions and eventually
-  // stutters. max is the hard ceiling (120 MB); target triggers proactive
-  // eviction at 70% (84 MB); cleanupInterval polls every 3s; strict evicts
-  // aggressively once target is exceeded rather than waiting for max.
-  gpuMemory: { max: 120e6, target: 0.7, cleanupInterval: 3000, strict: true },
+  viewportMargin: 100,
+  // GPU memory pressure controls, tuned to prioritise scroll smoothness:
+  // keep more textures resident so cards / hero panels scrolling into view
+  // hit the cache instead of triggering a re-decode + re-upload on the
+  // critical frame. max is the hard ceiling (200 MB); target defers
+  // proactive eviction to 80% (160 MB); cleanupInterval polls every 5s so
+  // the sweep is less likely to land mid-scroll; strict:false disables
+  // aggressive eviction above target — Blits only evicts when max is hit.
+  // Trade-off: uses more VRAM than the previous tuning. Safe on the demo's
+  // asset volume; would need re-tuning on a very tight-VRAM STB.
+  gpuMemory: { max: 200e6, target: 0.8, cleanupInterval: 5000, strict: false },
   // Canvas clears fully transparent so the Player screen can composite the
   // native <video> element (positioned behind the canvas in index.html)
   // through the canvas. On every non-Player route the App root Element

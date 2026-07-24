@@ -30,7 +30,7 @@ export default Blits.Component('PosterCard', {
         :w="$cardW"
         :h="$imageH"
         color="#FFFFFF"
-        :src="$image"
+        :src="$activeSrc"
         fit="cover"
         :alpha.transition="$fadeTransition"
       >
@@ -47,22 +47,30 @@ export default Blits.Component('PosterCard', {
     progress: undefined,
     cardW: CARD_W_PORTRAIT,
     cardH: CARD_H_PORTRAIT,
+    // Forwarded from PageContainer via ContentRail. When true, this card
+    // has just mounted while the page is mid-scroll and should NOT trigger
+    // its image decode or alpha fade yet — both would compete with the
+    // scroll rAF for main-thread time. activeSrc + fadeTransition below
+    // both gate on this. Once the card has committed to loading its image
+    // once (i.e. seen a moment of isScrolling=false), it stays committed
+    // for the rest of its life so subsequent scrolls don't unload textures.
+    isScrolling: false,
   },
   state() {
     return {
       // Starts false so the initial render has alpha=0 on the image
       // (only the dark placeholder is visible), then flips to true in
-      // the ready hook which triggers the fade-in transition. This is a
-      // mount-time fade, not tied to actual texture load, but that's
-      // enough to hide the abrupt "network image just arrived" pop
-      // that Picsum's variable latency was causing.
+      // the ready hook. Combined with the isScrolling gate on
+      // fadeTransition, this means the fade fires only when the card
+      // has mounted AND the page is at rest — never during a hold-scroll.
       hasMounted: false,
     }
   },
   hooks: {
     // Kick off the fade-in one tick after the element is in the scene
     // graph. Blits reactivity picks up the change to hasMounted and
-    // Lightning tweens alpha from 0 to 1 via the transition config.
+    // Lightning tweens alpha from 0 to 1 via the transition config —
+    // provided the page isn't currently scrolling (see fadeTransition).
     ready() {
       this.hasMounted = true
     },
@@ -85,12 +93,36 @@ export default Blits.Component('PosterCard', {
       const clamped = Math.min(Math.max(this.progress, 0), 1)
       return Math.round(this.cardW * clamped)
     },
-    // Fade-in on mount. DURATION.fast (200ms) is short enough that a card
-    // sliding into the visible window during a horizontal hold-scroll
-    // completes its fade before the next accepted press, and long enough
-    // that the fade feels intentional rather than a technical animation.
+    // Sticky-committed image src. Returns '' until the first moment the
+    // page reports isScrolling=false, then latches on the real image URL
+    // forever. Purpose: cards mounted mid-hold-scroll do NOT kick off
+    // texture decodes (Lightning treats empty src as "no image"), which
+    // otherwise steal main-thread time from the scroll rAF and cause the
+    // stutter that hold-down currently exhibits. Once a card has been
+    // seen at rest, its texture stays loaded across future scrolls — so
+    // there's no repeated unload/reload churn as the user navigates.
+    //
+    // Reads this._srcCommitted (a plain instance field, not reactive
+    // state) as a sticky latch; setting it inside the getter is a
+    // deliberate one-way commit that Blits' reactivity doesn't track,
+    // so this is safe.
+    activeSrc() {
+      if (this._srcCommitted) return this.image
+      if (!this.isScrolling) {
+        this._srcCommitted = true
+        return this.image
+      }
+      return ''
+    },
+    // Fade in only when the card has mounted AND we've committed to
+    // showing the real image (see activeSrc). Under hold-scroll this
+    // means the fade never fires — src is '' and activeSrc is falsy —
+    // so ~40 concurrent 200ms alpha tweens across newly-mounted cards
+    // that used to pile up during a vertical hold are gone. On settle,
+    // activeSrc latches and the fade plays once, masking the placeholder
+    // → image texture-swap the way it always did.
     fadeTransition() {
-      return transition(this.hasMounted ? 1 : 0, {
+      return transition(this.hasMounted && this.activeSrc ? 1 : 0, {
         duration: DURATION.fast,
         easing: EASING.smooth,
       })

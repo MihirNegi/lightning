@@ -80,6 +80,7 @@ export default Blits.Component('ContentRail', {
             :progress="$item.progress"
             :cardW="$cardW"
             :cardH="$cardH"
+            :isScrolling="$isScrolling"
           />
         </Element>
       </Element>
@@ -89,6 +90,14 @@ export default Blits.Component('ContentRail', {
     title: '',
     items: [],
     orientation: 'portrait',
+    // Forwarded from PageContainer. PosterCards read this to decide whether
+    // to fade in and load their image src at mount, or wait for the parent
+    // page's vertical scroll to settle first. This rail's own horizontal
+    // scroll state does NOT feed into this prop — a card mounted during a
+    // horizontal-only scroll behaves as if the page is at rest, which is
+    // the correct behavior (horizontal is already smooth and doesn't need
+    // the deferral).
+    isScrolling: false,
   },
   state() {
     return {

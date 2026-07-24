@@ -82,6 +82,7 @@ export default Blits.Component('PageContainer', {
           :title="$rail.title"
           :items="$rail.items"
           :orientation="$rail.orientation"
+          :isScrolling="$isScrolling"
         />
       </Element>
       <Element
@@ -125,6 +126,14 @@ export default Blits.Component('PageContainer', {
       // gates presses to HOLD_THROTTLE_PAGE_MS spacing so target advances
       // at a rate the visual ease can keep up with.
       lastInputAt: 0,
+      // True while animY is actively easing toward a target. Cascaded down
+      // through ContentRail into PosterCard so cards that mount mid-scroll
+      // can defer their alpha fade AND their image src until the scroll
+      // settles — turning ~40 concurrent 200ms alpha tweens + N concurrent
+      // image texture decodes into zero during transit. Sticky-lifted on
+      // each PosterCard so a card that has already been shown at rest
+      // stays shown when the next scroll starts.
+      isScrolling: false,
     }
   },
   computed: {
@@ -327,9 +336,12 @@ export default Blits.Component('PageContainer', {
       if (newStart !== this.railWinStart) this.railWinStart = newStart
       if (newEnd !== this.railWinEnd) this.railWinEnd = newEnd
     },
-    // Start the rAF scroll loop if it isn't already running.
+    // Start the rAF scroll loop if it isn't already running. Also flips
+    // isScrolling on — cards downstream use this to suppress mount-time
+    // alpha fades and defer image src loading until the scroll settles.
     ensureScrollLoopRunning() {
       if (this.rafHandle) return
+      if (!this.isScrolling) this.isScrolling = true
       this.lastFrameTime = performance.now()
       this.rafHandle = requestAnimationFrame((now) => this.scrollTick(now))
     },
@@ -347,6 +359,7 @@ export default Blits.Component('PageContainer', {
       if (Math.abs(remaining) < SETTLE_PX) {
         this.animY = target
         this.rafHandle = 0
+        if (this.isScrolling) this.isScrolling = false
         this.updateRailWindow()
         this.focusCurrentSection()
         return
