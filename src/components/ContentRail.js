@@ -4,15 +4,21 @@ import { SETTLE_PX, easeStep } from '../helpers/animations.js'
 import PosterCard from './PosterCard.js'
 
 // Lazy-mount window: how many cards to render around the current selection.
-// The visible clip spans the full stage width. AFTER covers everything to
-// the right of focus (focus + AFTER cards must fill the clip so no gap
-// appears at the right edge) plus a small forward buffer for a pressed
-// key that arrives before scroll settles. BEFORE keeps one card mounted
-// behind the focus — that card is the "peek" tile that renders in the
-// black area to the left of the title. Cards outside the window are
-// unmounted and their image textures freed.
-const WINDOW_BEFORE = 2
-const WINDOW_AFTER = 7
+// BEFORE=1 gives us the peek tile that renders in the black area to the
+// left of the rail title — that's the functional minimum. AFTER=6 is the
+// number needed to fill the clip out to the right stage edge: the card
+// at focus+6 sits at absolute x = 1792 and ends at 2052, covering the
+// full 1920 stage width. Cards outside the window are unmounted and
+// their image textures freed.
+//
+// These are deliberately tight to minimise per-rail-mount cost — a fresh
+// ContentRail creates 1+1+6=8 cards up front (down from 10 before). Each
+// card is a small Blits component with its own reactive bindings, and
+// creating them all in one synchronous burst is the main source of the
+// per-rail-boundary jank observed during vertical hold-scroll. Tighter
+// window = smaller burst.
+const WINDOW_BEFORE = 1
+const WINDOW_AFTER = 6
 
 // Static vertical offset of each card inside the clip. 8px of breathing
 // room above the card, matched by a 16px pad in clipH below.

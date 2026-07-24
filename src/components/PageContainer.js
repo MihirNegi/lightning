@@ -23,20 +23,11 @@ const CARD_INNER_TOP_Y = 8
 // focused section. Blits' :range directive uses [from, to) semantics
 // (exclusive end), so the total mounted is UP + VISIBLE + DOWN. Rails
 // outside this window are unmounted — their ContentRail instances are
-// destroyed, freeing all their card image textures.
-//
-// Buffers are ASYMMETRIC (2 up, 3 down) because sustained holds usually
-// scroll downward through content and each rail-boundary crossing
-// triggers a ContentRail + 10 PosterCard mount burst — heavy enough to
-// spike a frame past the vsync budget. A larger DOWN buffer means those
-// mounts happen every 3rd rail-transit instead of every rail-transit,
-// which spreads the mount cost across more frames and cuts the observed
-// jank rate. UP=2 gives symmetric enough return-navigation coverage
-// without doubling the resident-component count. Image decodes stay
-// gated behind anyIsScrolling, so buffered-but-not-yet-visible rails
-// cost only JS heap (~KB per component), not GPU texture memory.
-const RAIL_BUFFER_UP = 2
-const RAIL_BUFFER_DOWN = 3
+// destroyed, freeing all their card image textures. Note the window
+// slides one rail per focus-crossing regardless of buffer size, so
+// buffers control coverage/memory, not mount frequency.
+const RAIL_BUFFER_UP = 1
+const RAIL_BUFFER_DOWN = 1
 const RAIL_VISIBLE_ROWS = 3
 
 // Where the first content row lands on screen — matches the offset the
