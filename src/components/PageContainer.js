@@ -7,7 +7,9 @@ import {
   cardDimsFor,
 } from '../constants/layout.js'
 import {
+  HOLD_ACTIVE_MS,
   HOLD_THROTTLE_PAGE_MS,
+  HOLD_VELOCITY_PX_PER_MS,
   PAGE_SCROLL_TAU_MS,
   SETTLE_PX,
   easeStep,
@@ -120,12 +122,14 @@ export default Blits.Component('PageContainer', {
       // Timestamp of the last rAF tick, used to compute per-frame dt so
       // easeStep is proportional to real elapsed time.
       lastFrameTime: 0,
-      // Timestamp of the last accepted Up/Down press. Held-key auto-repeat
-      // fires ~30/sec, which used to move sectionIndex far ahead of the
-      // 90ms-tau ease and produce visible elastic lag. acceptHoldInput()
-      // gates presses to HOLD_THROTTLE_PAGE_MS spacing so target advances
-      // at a rate the visual ease can keep up with.
-      lastInputAt: 0,
+      // Timestamp (performance.now() timebase) of the last accepted
+      // Up/Down press. Two consumers: acceptHoldInput() for throttling
+      // and scrollTick() for deciding between velocity-mode and ease-mode
+      // (see HOLD_ACTIVE_MS). Initialised to a large negative so the
+      // first press after mount is always accepted — a fresh mount has
+      // performance.now() close to zero, and comparing against 0 would
+      // incorrectly gate the very first press behind the throttle.
+      lastInputAt: -1e9,
       // True while animY is actively easing toward a target. Cascaded down
       // through ContentRail into PosterCard so cards that mount mid-scroll
       // can defer their alpha fade AND their image src until the scroll
@@ -284,12 +288,12 @@ export default Blits.Component('PageContainer', {
   },
   methods: {
     // Returns true if enough time has passed since the last accepted press.
-    // Records the current time so the next call is throttled. Matches the
-    // pattern in Navbar / HeroCarousel / ContentRail so held-key input on
-    // any axis produces one accepted press per throttle interval, feeding
-    // the ease at the same rate it can visually resolve.
+    // Records the current time so the next call is throttled. Uses
+    // performance.now() (not Date.now()) so lastInputAt shares a timebase
+    // with the rAF now handed to scrollTick — scrollTick's velocity-vs-ease
+    // decision depends on (now - lastInputAt) being a meaningful duration.
     acceptHoldInput() {
-      const now = Date.now()
+      const now = performance.now()
       if (now - this.lastInputAt < HOLD_THROTTLE_PAGE_MS) return false
       this.lastInputAt = now
       return true
@@ -345,18 +349,32 @@ export default Blits.Component('PageContainer', {
       this.lastFrameTime = performance.now()
       this.rafHandle = requestAnimationFrame((now) => this.scrollTick(now))
     },
-    // Per-frame step. Eases animY toward -scrollOffset using exponential
-    // smoothing, then slides the rail-mount window to follow the new
-    // visual position. On settle, calls focusCurrentSection() once so
-    // Blits' focus swap fires exactly once per hold-burst (rather than
-    // once per accepted press) — cuts overlapping 200ms title fades from
-    // one-per-press down to one-per-settle.
+    // Per-frame step. Two motion modes:
+    //
+    //   Hold-mode  (last accepted press within HOLD_ACTIVE_MS): constant
+    //   velocity toward target at HOLD_VELOCITY_PX_PER_MS. Per-frame
+    //   movement is identical regardless of remaining distance, so the
+    //   eye reads it as flowing motion rather than a series of eased
+    //   steps between rest points. This is the mode we're in for the
+    //   entire duration of a sustained Up/Down hold.
+    //
+    //   Ease-mode  (no recent press): exponential smoothing toward target
+    //   with PAGE_SCROLL_TAU_MS. Only entered after the user releases,
+    //   and its job is a natural settle from wherever velocity-mode left
+    //   the position. Fast tail so single presses still feel snappy.
+    //
+    // The settle-and-exit branch also guards on !holdActive so we don't
+    // exit the loop mid-hold if position momentarily catches the target;
+    // the next press will need the loop already running to pick it up
+    // without a fresh rAF-schedule frame of latency.
     scrollTick(now) {
       const dt = now - this.lastFrameTime
       this.lastFrameTime = now
       const target = -this.scrollOffset
       const remaining = target - this.animY
-      if (Math.abs(remaining) < SETTLE_PX) {
+      const holdActive = now - this.lastInputAt < HOLD_ACTIVE_MS
+
+      if (Math.abs(remaining) < SETTLE_PX && !holdActive) {
         this.animY = target
         this.rafHandle = 0
         if (this.isScrolling) this.isScrolling = false
@@ -364,7 +382,14 @@ export default Blits.Component('PageContainer', {
         this.focusCurrentSection()
         return
       }
-      this.animY = easeStep(this.animY, target, dt, PAGE_SCROLL_TAU_MS)
+
+      if (holdActive) {
+        const step = HOLD_VELOCITY_PX_PER_MS * dt
+        const sign = remaining >= 0 ? 1 : -1
+        this.animY += Math.min(Math.abs(remaining), step) * sign
+      } else {
+        this.animY = easeStep(this.animY, target, dt, PAGE_SCROLL_TAU_MS)
+      }
       this.updateRailWindow()
       this.rafHandle = requestAnimationFrame((next) => this.scrollTick(next))
     },

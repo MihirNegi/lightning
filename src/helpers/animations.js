@@ -61,6 +61,29 @@ export const PAGE_SCROLL_TAU_MS = 90
 // TV viewing distance and small enough that the snap isn't perceptible.
 export const SETTLE_PX = 0.5
 
+// While the user is holding Up/Down, PageContainer's scroll switches from
+// exponential smoothing to constant-velocity motion. Reason: per-frame
+// movement under exponential ease varies ~12x across a single throttle
+// cycle (fast right after a press, decayed near-nothing before the next),
+// which reads as "shove-glide-almost-stop" rather than a continuous flow.
+// Constant velocity gives identical per-frame motion — the same visual
+// signature as a conveyor belt rather than a sequence of eased steps.
+//
+// HOLD_ACTIVE_MS is the window after the last accepted press during
+// which we stay in velocity mode. Sized slightly larger than the throttle
+// (220ms) so consecutive throttled presses never briefly drop out of
+// velocity mode between them. On genuine release, the last press falls
+// outside this window and we switch to ease for a natural settle-out.
+//
+// HOLD_VELOCITY_PX_PER_MS is tuned to be marginally faster than the
+// steady-state target-advance rate (RAIL_HEIGHT_PORTRAIT / throttle ≈
+// 1.86 px/ms). At 2.0 px/ms the position keeps up with the target and,
+// after long holds, briefly closes the small residual lag — never so
+// fast that it catches up mid-cycle and stalls waiting for the next
+// press. This keeps motion continuous under any hold duration.
+export const HOLD_ACTIVE_MS = 300
+export const HOLD_VELOCITY_PX_PER_MS = 2.0
+
 // One step of exponential smoothing. Given a current value, a target, and
 // the real elapsed frame time in ms, returns the new value one frame closer
 // to the target. Frame-rate independent (uses real dt), never overshoots,
