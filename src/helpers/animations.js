@@ -39,13 +39,17 @@ export const HOLD_THROTTLE_MS = 250
 // Exponential-smoothing time constants (in milliseconds) for the rAF scroll
 // loops in ContentRail (horizontal) and PageContainer (vertical). Each loop
 // calls easeStep() every frame; TAU controls the perceived "weight".
-// Smaller TAU = snappier. Both axes use the same value so scrolling reads
-// consistent regardless of direction — vertical moves a larger per-press
-// distance (a full rail height) than horizontal (a single card), but with
-// a shared TAU the *settling time* is the same for both, which matches the
-// Rust reference and reads as unified motion rather than two separate
-// systems with different personalities.
-export const RAIL_SCROLL_TAU_MS = 90
+// Smaller TAU = snappier (position tracks target more tightly, less coast
+// on release, faster single-press settle). At steady state during a held
+// key, position velocity equals target velocity regardless of TAU — so
+// TAU controls response character, not sustained scroll speed.
+//
+// The two axes use different values: horizontal is tighter (60) because
+// users scroll horizontally to browse and land on specific cards — the
+// snappier response feels more purposeful. Vertical stays at 90 because
+// rail-height jumps benefit from more coast at the tail, giving the
+// momentum-like whip that matches the Rust reference on the page axis.
+export const RAIL_SCROLL_TAU_MS = 60
 export const PAGE_SCROLL_TAU_MS = 90
 
 // Distance from target below which an rAF ease loop snaps and cancels
