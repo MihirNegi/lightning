@@ -17,6 +17,22 @@ const WINDOW_AFTER = 7
 // Static vertical offset of each card inside the clip. 8px of breathing
 // room above the card, matched by a 16px pad in clipH below.
 const CARD_OFFSET_Y = 8
+
+// Hold-detect + advance-boost. Under sustained hold the browser fires
+// keydown events at its auto-repeat rate — commonly ~30/sec on desktop
+// Chrome but as slow as 5-10/sec on some systems / TV browsers. At the
+// low end that caps the horizontal scroll at ~5-10 cards/sec, which
+// reads as sluggish regardless of tau. To decouple hold-speed from the
+// browser's auto-repeat rate, we advance selectedIndex by HOLD_ADVANCE
+// (instead of 1) when the previous accepted press was less than
+// HOLD_DETECT_MS ago — a straightforward "if presses are arriving
+// rapidly, it's a hold, skip cards". Single taps and deliberate slow
+// tapping stay at 1-per-press so users can still land precisely on any
+// specific card. Threshold picked slightly above typical auto-repeat
+// interval so any real hold triggers boost, but two deliberate taps
+// don't.
+const HOLD_DETECT_MS = 100
+const HOLD_ADVANCE = 2
 // Frame-around-card margin: the focus frame sits 5px outside the card on
 // every side. Exported so PageContainer's global frame overlay can size
 // itself consistently with the rail's card layout.
@@ -187,22 +203,36 @@ export default Blits.Component('ContentRail', {
     },
   },
   input: {
-    // No hold throttle on Left/Right — see the block comment in
-    // helpers/animations.js. Held-key auto-repeat advances selectedIndex
-    // at the browser's native rate so the horizontal scroll target
-    // (scrollTarget) advances as a smooth ramp, and the exp-smoothing
-    // ease chasing that ramp produces near-constant per-frame motion.
-    // Matches Rust's per-rail scroll model exactly.
+    // No hold throttle on Left/Right — held-key auto-repeat advances
+    // selectedIndex at the browser's native rate so scrollTarget advances
+    // as a smooth ramp and the exp-smoothing ease chasing that ramp
+    // produces near-constant per-frame motion (the "flow" character).
+    //
+    // Boost: if the previous accepted press was less than HOLD_DETECT_MS
+    // ago, we advance by HOLD_ADVANCE cards instead of 1 — doubling the
+    // effective hold velocity on systems where browser auto-repeat is
+    // slow. Single taps and deliberate slow tapping keep advance=1, so
+    // precise landing on any card is preserved. _lastInputAt is a plain
+    // instance field (not reactive state) since neither the template nor
+    // any computed reads it.
     left() {
       if (this.selectedIndex <= 0) return
-      this.selectedIndex--
+      const now = performance.now()
+      const isHold = now - (this._lastInputAt || -Infinity) < HOLD_DETECT_MS
+      this._lastInputAt = now
+      const advance = isHold ? HOLD_ADVANCE : 1
+      this.selectedIndex = Math.max(0, this.selectedIndex - advance)
       this.updateScrollTarget()
       this.rebuildVisibleItems()
       this.ensureScrollLoopRunning()
     },
     right() {
       if (this.selectedIndex >= this.items.length - 1) return
-      this.selectedIndex++
+      const now = performance.now()
+      const isHold = now - (this._lastInputAt || -Infinity) < HOLD_DETECT_MS
+      this._lastInputAt = now
+      const advance = isHold ? HOLD_ADVANCE : 1
+      this.selectedIndex = Math.min(this.items.length - 1, this.selectedIndex + advance)
       this.updateScrollTarget()
       this.rebuildVisibleItems()
       this.ensureScrollLoopRunning()
