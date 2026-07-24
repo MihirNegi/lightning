@@ -85,10 +85,10 @@ export default Blits.Component('PageContainer', {
         />
       </Element>
       <Element
-        :x.transition="{value: $frameX, duration: 200, easing: 'ease-out'}"
+        :x="$frameX"
         :y="$frameY"
-        :w.transition="{value: $frameW, duration: 200, easing: 'ease-out'}"
-        :h.transition="{value: $frameH, duration: 200, easing: 'ease-out'}"
+        :w="$frameW"
+        :h="$frameH"
         :alpha.transition="{value: $isRailFocused ? 1 : 0, duration: 200, easing: 'ease-out'}"
       >
         <Element x="0" y="0" :w="$frameW" :h="$frameMargin" color="#FFFFFF" />
@@ -144,15 +144,28 @@ export default Blits.Component('PageContainer', {
     // scroll offset lands its title just below the navbar. Computed in a
     // single pass so rail Y stays authoritative for both template
     // positioning and scroll target math even when orientations mix.
+    //
+    // Cached against the current $rails prop reference: scrollTick calls
+    // updateRailWindow() every rAF frame (~60x/sec) which reads this array,
+    // and rebuilding N spread-objects on every read added measurable GC
+    // pressure. Since props.rails is set once at mount and does not change
+    // during a keepAlive page's lifetime, a reference-equality check
+    // returns the same array for every subsequent read without recomputing.
+    // If parent ever swaps the rails prop, the ref changes and the cache
+    // rebuilds automatically.
     railsWithLayout() {
-      const baseY = this.hasHero ? HERO_HEIGHT : CONTENT_TOP_Y
-      let cursor = baseY
-      return this.rails.map((rail) => {
-        const { railH } = cardDimsFor(rail.orientation)
-        const positioned = { ...rail, _y: cursor, _railH: railH }
-        cursor += railH
-        return positioned
-      })
+      if (this._railsCacheKey !== this.rails) {
+        this._railsCacheKey = this.rails
+        const baseY = this.hasHero ? HERO_HEIGHT : CONTENT_TOP_Y
+        let cursor = baseY
+        this._railsCache = this.rails.map((rail) => {
+          const { railH } = cardDimsFor(rail.orientation)
+          const positioned = { ...rail, _y: cursor, _railH: railH }
+          cursor += railH
+          return positioned
+        })
+      }
+      return this._railsCache
     },
     // Highest valid sectionIndex.
     maxSectionIndex() {
@@ -176,9 +189,13 @@ export default Blits.Component('PageContainer', {
     // "static focus, content flowing" the way the Rust reference does.
     //
     // The frame's size follows the currently focused rail's card dimensions
-    // (portrait vs landscape resolve differently); w/h transitions in the
-    // template ease that resize so the frame doesn't snap when moving
-    // between rails of different orientation.
+    // (portrait vs landscape resolve differently). x/w/h are bound WITHOUT
+    // transitions — frameX is a compile-time constant, frameY is static,
+    // and frameW/frameH only change when the focused rail's orientation
+    // flips. Under sustained hold-scroll, tweening those changes stacked
+    // overlapping 200ms transitions on every accepted press and materially
+    // hurt smoothness; snapping is imperceptible during fast transit and
+    // barely noticeable on a single step between mixed-orientation rails.
     isRailFocused() {
       if (this.hasHero && this.sectionIndex === 0) return false
       return this.rails.length > 0

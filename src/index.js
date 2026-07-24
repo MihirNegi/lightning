@@ -24,7 +24,7 @@ Blits.Launch(App, 'app', {
   // scrolling), but a smaller value means fewer just-offscreen rails get
   // drawn every frame. 100 mirrors the reference tuning; 150 was drawing
   // ~one extra rail worth of work per frame for no visible benefit on TV.
-  viewportMargin: 100,
+  viewportMargin: 50,
   // GPU memory pressure controls. TV set-top boxes have tight VRAM; without
   // these Blits accumulates textures over long sessions and eventually
   // stutters. max is the hard ceiling (120 MB); target triggers proactive
