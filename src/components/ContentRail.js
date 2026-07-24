@@ -31,7 +31,7 @@ const CARD_OFFSET_Y = 8
 // specific card. Threshold picked slightly above typical auto-repeat
 // interval so any real hold triggers boost, but two deliberate taps
 // don't.
-const HOLD_DETECT_MS = 100
+const HOLD_DETECT_MS = 200
 const HOLD_ADVANCE = 2
 // Frame-around-card margin: the focus frame sits 5px outside the card on
 // every side. Exported so PageContainer's global frame overlay can size
@@ -96,7 +96,7 @@ export default Blits.Component('ContentRail', {
             :progress="$item.progress"
             :cardW="$cardW"
             :cardH="$cardH"
-            :isScrolling="$isScrolling"
+            :isScrolling="$anyIsScrolling"
           />
         </Element>
       </Element>
@@ -106,13 +106,13 @@ export default Blits.Component('ContentRail', {
     title: '',
     items: [],
     orientation: 'portrait',
-    // Forwarded from PageContainer. PosterCards read this to decide whether
-    // to fade in and load their image src at mount, or wait for the parent
-    // page's vertical scroll to settle first. This rail's own horizontal
-    // scroll state does NOT feed into this prop — a card mounted during a
-    // horizontal-only scroll behaves as if the page is at rest, which is
-    // the correct behavior (horizontal is already smooth and doesn't need
-    // the deferral).
+    // Forwarded from PageContainer. Combined with this rail's own
+    // horizontal-scroll state via the anyIsScrolling computed, then
+    // passed to child PosterCards so they defer their image src commit
+    // whenever EITHER axis is in motion. Matches Rust's scroll_busy gate,
+    // which covers both anim_y and anim_x uniformly — during a hold
+    // scroll, cards mount silently (no decode kicked off), and only
+    // commit their src when both axes settle.
     isScrolling: false,
   },
   state() {
@@ -143,6 +143,13 @@ export default Blits.Component('ContentRail', {
       lastFrameTime: 0,
       // Static offset for the card's y inside the clip.
       cardOffsetY: CARD_OFFSET_Y,
+      // True while this rail's rAF scroll loop is easing scrollActual
+      // toward scrollTarget. Combined with the parent-page isScrolling
+      // prop in the anyIsScrolling computed below, and passed down to
+      // PosterCard so image decodes are gated on *either* axis moving.
+      // Set inside ensureScrollLoopRunning + scrollTick so it strictly
+      // mirrors rafHandle's on/off state.
+      railIsScrolling: false,
     }
   },
   computed: {
@@ -181,6 +188,14 @@ export default Blits.Component('ContentRail', {
     // Horizontal step per card slot: card width + inter-card gap.
     cardStep() {
       return this.cardW + CARD_GAP
+    },
+    // OR of the parent-page scroll flag and this rail's own scroll flag.
+    // PosterCard reads this to decide whether to defer its src commit —
+    // any motion on either axis holds off image decodes so they don't
+    // steal frame budget from the scroll ease. Rust's scroll_busy gate
+    // works the same way (single boolean covering both axes).
+    anyIsScrolling() {
+      return this.isScrolling || this.railIsScrolling
     },
   },
   hooks: {
@@ -269,9 +284,12 @@ export default Blits.Component('ContentRail', {
     // Start the RAF scroll loop if it isn't already running. Called from
     // every accepted input. If the loop is already running, presses just
     // update scrollTarget and the loop picks up the new target on its
-    // next tick — no restart, no velocity reset, no visible hitch.
+    // next tick — no restart, no velocity reset, no visible hitch. Also
+    // flips railIsScrolling on so downstream PosterCards can defer their
+    // image src commits (see anyIsScrolling computed).
     ensureScrollLoopRunning() {
       if (this.rafHandle) return
+      if (!this.railIsScrolling) this.railIsScrolling = true
       this.lastFrameTime = performance.now()
       this.rafHandle = requestAnimationFrame((now) => this.scrollTick(now))
     },
@@ -289,6 +307,7 @@ export default Blits.Component('ContentRail', {
       if (Math.abs(remaining) < SETTLE_PX) {
         this.scrollActual = this.scrollTarget
         this.rafHandle = 0
+        if (this.railIsScrolling) this.railIsScrolling = false
         return
       }
       this.scrollActual = easeStep(this.scrollActual, this.scrollTarget, dt)
