@@ -30,7 +30,7 @@ export default Blits.Component('PosterCard', {
         :w="$cardW"
         :h="$imageH"
         color="#FFFFFF"
-        :src="$activeSrc"
+        :src="$image"
         fit="cover"
         :alpha.transition="$fadeTransition"
       >
@@ -47,31 +47,35 @@ export default Blits.Component('PosterCard', {
     progress: undefined,
     cardW: CARD_W_PORTRAIT,
     cardH: CARD_H_PORTRAIT,
-    // Forwarded from PageContainer via ContentRail. When true, this card
-    // has just mounted while the page is mid-scroll and should NOT trigger
-    // its image decode or alpha fade yet — both would compete with the
-    // scroll rAF for main-thread time. activeSrc + fadeTransition below
-    // both gate on this. Once the card has committed to loading its image
-    // once (i.e. seen a moment of isScrolling=false), it stays committed
-    // for the rest of its life so subsequent scrolls don't unload textures.
+    // Forwarded from PageContainer via ContentRail. Read once at ready()
+    // to decide whether this card should fade in (parent at rest) or
+    // snap in (parent mid-scroll). Deliberately NOT reactive after mount
+    // — we don't want scrolls that start later to hide already-visible
+    // cards, and we don't want to re-fade cards on every settle.
     isScrolling: false,
   },
   state() {
     return {
       // Starts false so the initial render has alpha=0 on the image
       // (only the dark placeholder is visible), then flips to true in
-      // the ready hook. Combined with the isScrolling gate on
-      // fadeTransition, this means the fade fires only when the card
-      // has mounted AND the page is at rest — never during a hold-scroll.
+      // the ready hook. See fadeTransition for how mid-scroll mounts
+      // bypass the fade entirely so their alpha snaps to 1 instead.
       hasMounted: false,
     }
   },
   hooks: {
-    // Kick off the fade-in one tick after the element is in the scene
-    // graph. Blits reactivity picks up the change to hasMounted and
-    // Lightning tweens alpha from 0 to 1 via the transition config —
-    // provided the page isn't currently scrolling (see fadeTransition).
+    // Decide the mount-fade behavior once, based on the parent's scroll
+    // state AT MOUNT time. Cards that mount mid-hold-scroll skip the
+    // 200ms alpha fade — during a sustained vertical hold, ~40 cards
+    // mount in quick succession and their concurrent alpha tweens
+    // otherwise steal enough main-thread time to visibly hurt the
+    // scroll ease. The decision is sticky (stored as a plain instance
+    // field, not reactive state) so cards don't flip behavior if scroll
+    // starts/stops later.
     ready() {
+      if (this.isScrolling) {
+        this._skipInitialFade = true
+      }
       this.hasMounted = true
     },
   },
@@ -93,36 +97,22 @@ export default Blits.Component('PosterCard', {
       const clamped = Math.min(Math.max(this.progress, 0), 1)
       return Math.round(this.cardW * clamped)
     },
-    // Sticky-committed image src. Returns '' until the first moment the
-    // page reports isScrolling=false, then latches on the real image URL
-    // forever. Purpose: cards mounted mid-hold-scroll do NOT kick off
-    // texture decodes (Lightning treats empty src as "no image"), which
-    // otherwise steal main-thread time from the scroll rAF and cause the
-    // stutter that hold-down currently exhibits. Once a card has been
-    // seen at rest, its texture stays loaded across future scrolls — so
-    // there's no repeated unload/reload churn as the user navigates.
-    //
-    // Reads this._srcCommitted (a plain instance field, not reactive
-    // state) as a sticky latch; setting it inside the getter is a
-    // deliberate one-way commit that Blits' reactivity doesn't track,
-    // so this is safe.
-    activeSrc() {
-      if (this._srcCommitted) return this.image
-      if (!this.isScrolling) {
-        this._srcCommitted = true
-        return this.image
-      }
-      return ''
-    },
-    // Fade in only when the card has mounted AND we've committed to
-    // showing the real image (see activeSrc). Under hold-scroll this
-    // means the fade never fires — src is '' and activeSrc is falsy —
-    // so ~40 concurrent 200ms alpha tweens across newly-mounted cards
-    // that used to pile up during a vertical hold are gone. On settle,
-    // activeSrc latches and the fade plays once, masking the placeholder
-    // → image texture-swap the way it always did.
+    // Mount-time alpha reveal. Two behaviors depending on parent state
+    // AT the moment ready() fired:
+    //   - Parent at rest → normal 200ms fade from alpha 0 to 1 (see the
+    //     original UX rationale: mask the placeholder → texture-swap pop
+    //     when the Picsum image finally arrives).
+    //   - Parent mid-scroll → skip the fade, snap alpha to 1. Cards are
+    //     visible immediately, images load as usual — the saving is the
+    //     avoided cost of ~40 concurrent 200ms alpha tweens during a
+    //     vertical hold, which was the tween-storm hurting smoothness.
+    // _skipInitialFade is set once in ready() and never cleared, so the
+    // decision is stable for the card's lifetime.
     fadeTransition() {
-      return transition(this.hasMounted && this.activeSrc ? 1 : 0, {
+      if (this._skipInitialFade) {
+        return { value: 1, duration: 0 }
+      }
+      return transition(this.hasMounted ? 1 : 0, {
         duration: DURATION.fast,
         easing: EASING.smooth,
       })
