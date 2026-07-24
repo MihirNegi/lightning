@@ -128,15 +128,24 @@ color="#FFFFFF"
     },
   },
   methods: {
-    // Navigate to the tab at the given index and highlight it. The third
-    // argument to $router.to overrides the outgoing route's keepAlive to
-    // false — tabs statically keepAlive:true so a drill-into-Meta caches
-    // the current tab's view, but we do NOT want that behaviour on a plain
-    // tab-to-tab switch (it would leak a view for every previously-visited
-    // tab). The afterEach router hook in App.js pulls focus back to Navbar
-    // once the transition completes.
+    // Navigate to the tab at the given index and highlight it. Emits
+    // `nav:tab-change` with the direction (+1 = moved right, -1 = moved
+    // left) BEFORE calling $router.to so App.js can pre-position the
+    // RouterView off-screen on the incoming side; the new page then
+    // mounts already at that offset and eases into view. Emitting after
+    // the route swap would flash the page at x=0 before jumping to the
+    // off-screen start position.
+    //
+    // The third argument to $router.to overrides the outgoing route's
+    // keepAlive to false — tabs statically keepAlive:true so a
+    // drill-into-Meta caches the current tab's view, but we do NOT want
+    // that behaviour on a plain tab-to-tab switch (it would leak a view
+    // for every previously-visited tab). The afterEach router hook in
+    // App.js pulls focus back to Navbar once the transition completes.
     selectTab(index) {
+      const direction = index > this.focusIndex ? 1 : -1
       this.focusIndex = index
+      this.$emit('nav:tab-change', direction)
       this.$router.to(this.tabs[index].path, {}, { keepAlive: false })
     },
     // Highlight whichever tab matches the current route (e.g. on boot or focus).

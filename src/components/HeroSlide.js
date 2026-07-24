@@ -4,10 +4,12 @@ import { CONTENT_PADDING_X } from '../constants/layout.js'
 // A single hero banner slide: full-bleed background image, bottom-up dark
 // gradient for text readability, and the slide copy on the left.
 //
-// Position is set directly by the parent HeroCarousel via the x prop.
-// HeroCarousel lays all slides side-by-side in a filmstrip and scrolls the
-// whole strip with a rAF ease loop — individual slides do not tween their
-// own x, they just sit at the position the parent gives them.
+// Position is set by the parent HeroCarousel via `:x="$entry.x"` on the
+// HeroSlide component element. Blits applies that x to this component's
+// root Element automatically — do NOT declare `x` as a component prop or
+// re-bind :x inside the template, or it collides with the built-in
+// positioning shortcut and the slide fails to render (which is what
+// happened during the first pass of the smooth-scroll refactor).
 //
 // Template pixel values are literals (Blits templates cannot interpolate JS).
 // 1920x880 matches STAGE_W and HERO_HEIGHT in constants/layout.js.
@@ -15,11 +17,7 @@ import { CONTENT_PADDING_X } from '../constants/layout.js'
 // would be tinted by whatever the default background color is.
 export default Blits.Component('HeroSlide', {
   template: `
-    <Element
-      :x="$x"
-      w="1920"
-      h="880"
-    >
+    <Element w="1920" h="880">
       <Element w="1920" h="880" :src="$imageSrc" fit="cover" color="#FFFFFF" />
       <Element w="1920" h="880" color="{bottom: '#0B0B0B', top: 'rgba(11, 11, 11, 0.15)'}" />
       <Element w="1920" h="260" y="620" color="{bottom: '#0B0B0B', top: 'rgba(11, 11, 11, 0)'}" />
@@ -50,10 +48,6 @@ export default Blits.Component('HeroSlide', {
     title: '',
     subtitle: '',
     description: '',
-    // Absolute x position of this slide inside HeroCarousel's scrolling
-    // strip, in stage px. The strip lays slide i at i * STAGE_W and adds
-    // clones at -STAGE_W and N*STAGE_W so the wrap is visually continuous.
-    x: 0,
   },
   computed: {
     // Image src descriptor with keepAlive so the hero texture survives this

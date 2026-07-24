@@ -49,6 +49,13 @@ export const HOLD_THROTTLE_MS = 250
 export const RAIL_SCROLL_TAU_MS = 90
 export const PAGE_SCROLL_TAU_MS = 90
 
+// Tab-to-tab horizontal page slide. Larger tau than the scroll axes
+// because the distance travelled is a full stage width (1920 px) vs a
+// single card / rail height. 180ms matches the Rust reference's
+// HERO_SLIDE_TAU_MS so the personality of a tab change reads the same on
+// both apps — snappy initial motion, settled by ~500ms.
+export const TAB_SLIDE_TAU_MS = 180
+
 // Distance from target below which an rAF ease loop snaps and cancels
 // itself. Exponential smoothing asymptotes — without a threshold the loop
 // would run forever chasing sub-pixel differences. 0.5 px is invisible at

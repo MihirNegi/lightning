@@ -88,13 +88,9 @@ export default Blits.Component('PageContainer', {
         :y="$frameY"
         :w="$frameW"
         :h="$frameH"
+        :border="{width: $frameMargin, color: '#FFFFFF'}"
         :alpha.transition="{value: $isRailFocused ? 1 : 0, duration: 200, easing: 'ease-out'}"
-      >
-        <Element x="0" y="0" :w="$frameW" :h="$frameMargin" color="#FFFFFF" />
-        <Element x="0" :y="$frameBottomBarY" :w="$frameW" :h="$frameMargin" color="#FFFFFF" />
-        <Element x="0" y="0" :w="$frameMargin" :h="$frameH" color="#FFFFFF" />
-        <Element :x="$frameRightBarX" y="0" :w="$frameMargin" :h="$frameH" color="#FFFFFF" />
-      </Element>
+      />
     </Element>
   `,
   props: {
@@ -229,14 +225,6 @@ export default Blits.Component('PageContainer', {
     // is 5px OUTSIDE the card on top.
     frameY() {
       return CONTENT_TOP_Y + RAIL_TITLE_STRIP_H + CARD_INNER_TOP_Y - FRAME_MARGIN
-    },
-    // The bottom-bar's y within the frame element (frameH - FRAME_MARGIN).
-    // Templates cannot compute this inline, so exposed as its own field.
-    frameBottomBarY() {
-      return this.frameH - FRAME_MARGIN
-    },
-    frameRightBarX() {
-      return this.frameW - FRAME_MARGIN
     },
   },
   hooks: {

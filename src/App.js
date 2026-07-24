@@ -1,5 +1,7 @@
 import Blits from '@lightningjs/blits'
 import Navbar from './components/Navbar.js'
+import { STAGE_W } from './constants/layout.js'
+import { SETTLE_PX, TAB_SLIDE_TAU_MS, easeStep } from './helpers/animations.js'
 
 // Tab pages participate in history so Meta.back can pop cleanly back to the
 // tab the user drilled in from. keepAlive:true caches the outgoing tab's
@@ -45,7 +47,9 @@ export default Blits.Application({
   template: `
     <Element w="1920" h="1080">
       <Element w="1920" h="1080" color="#0B0B0B" :alpha="$bgAlpha" />
-      <RouterView ref="router" w="1920" h="1080" />
+      <Element w="1920" h="1080" :x="$tabSlideX">
+        <RouterView ref="router" w="1920" h="1080" />
+      </Element>
       <Navbar ref="navbar" :show="$showNavbar" />
     </Element>
   `,
@@ -58,6 +62,19 @@ export default Blits.Application({
       // Hidden during drill-down modes (Meta + Player) — those are
       // full-screen contexts and the tab strip is visual noise there.
       showNavbar: true,
+      // Horizontal offset of the RouterView container. 0 = at rest.
+      // Snapped to ±STAGE_W the instant a tab-change event arrives so
+      // the new page mounts already offscreen on the incoming side, then
+      // eased back to 0 by tabSlideTick. Left → right press yields +STAGE_W
+      // (new page enters from the right), right → left yields -STAGE_W.
+      tabSlideX: 0,
+      // Active requestAnimationFrame id for the tab-slide ease, or 0.
+      // Instance-only field would suffice, but Blits state is convenient
+      // and the extra reactivity dispatch on start/stop is negligible
+      // compared to the tween itself.
+      tabSlideRaf: 0,
+      // Timestamp of the last tab-slide rAF tick for real-elapsed dt.
+      tabSlideLastFrame: 0,
     }
   },
   // Blits reads routes as either an array (routes only) or an object with
@@ -115,6 +132,18 @@ export default Blits.Application({
       // Meta.back also emits 'tab' explicitly since tabs never emit
       // chrome events on their own.
       this.$listen('chrome:set', (mode) => this.applyChrome(mode))
+      // Navbar emits this when the user moves between tabs, carrying the
+      // direction of motion (+1 right, -1 left). Snap the RouterView
+      // container off-screen on the incoming side and start the ease so
+      // the new page (which mounts a tick later once $router.to lands)
+      // enters at that offset and glides to 0.
+      this.$listen('nav:tab-change', (direction) => this.startTabSlide(direction))
+    },
+    destroy() {
+      if (this.tabSlideRaf) {
+        cancelAnimationFrame(this.tabSlideRaf)
+        this.tabSlideRaf = 0
+      }
     },
   },
   methods: {
@@ -128,6 +157,32 @@ export default Blits.Application({
     applyChrome(mode) {
       this.showNavbar = mode === 'tab'
       this.bgAlpha = mode === 'player' ? 0 : 1
+    },
+    // Seed the horizontal offset for the tab-change slide and start (or
+    // continue) the ease loop. Called synchronously from the Navbar's
+    // emit BEFORE $router.to runs — Blits $emit is synchronous, so by
+    // the time RouterView swaps to the new page the container is
+    // already at ±STAGE_W and the new page mounts offscreen.
+    startTabSlide(direction) {
+      this.tabSlideX = direction * STAGE_W
+      this.tabSlideLastFrame = performance.now()
+      if (this.tabSlideRaf) return
+      this.tabSlideRaf = requestAnimationFrame((now) => this.tabSlideTick(now))
+    },
+    // Per-frame ease of tabSlideX toward 0. Same easeStep pattern as
+    // ContentRail / PageContainer / HeroCarousel — a chained tab change
+    // mid-slide just resets tabSlideX to the new incoming side and the
+    // loop picks it up on the next tick without restart or discontinuity.
+    tabSlideTick(now) {
+      const dt = now - this.tabSlideLastFrame
+      this.tabSlideLastFrame = now
+      if (Math.abs(this.tabSlideX) < SETTLE_PX) {
+        this.tabSlideX = 0
+        this.tabSlideRaf = 0
+        return
+      }
+      this.tabSlideX = easeStep(this.tabSlideX, 0, dt, TAB_SLIDE_TAU_MS)
+      this.tabSlideRaf = requestAnimationFrame((next) => this.tabSlideTick(next))
     },
     // Close the TV application. Tries platform-native exit APIs first
     // (Tizen on Samsung, webOS on LG) and falls back to window.close(),
