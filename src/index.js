@@ -28,9 +28,11 @@ Blits.Launch(App, 'app', {
   // GPU memory pressure controls. TV set-top boxes have tight VRAM; without
   // these Blits accumulates textures over long sessions and eventually
   // stutters. max is the hard ceiling (120 MB); target triggers proactive
-  // eviction at 70% (84 MB); cleanupInterval polls every 3s; strict evicts
-  // aggressively once target is exceeded rather than waiting for max.
-  gpuMemory: { max: 120e6, target: 0.7, cleanupInterval: 3000, strict: true },
+  // eviction at 70% (84 MB); cleanupInterval polls every 5s (up from 3s
+  // to reduce idle work — the sweep is less likely to land on a rendered
+  // frame); strict evicts aggressively once target is exceeded rather
+  // than waiting for max.
+  gpuMemory: { max: 120e6, target: 0.7, cleanupInterval: 5000, strict: true },
   // Canvas clears fully transparent so the Player screen can composite the
   // native <video> element (positioned behind the canvas in index.html)
   // through the canvas. On every non-Player route the App root Element

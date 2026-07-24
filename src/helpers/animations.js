@@ -32,16 +32,18 @@ export const HOLD_THROTTLE_MS = 250
 // cannot register.
 export const HOLD_THROTTLE_RAIL_MS = 150
 
-// Page-scroll throttle. Under sustained hold, PageContainer accepts one
-// Up/Down press per 220ms; each press advances sectionIndex by one rail
-// (~370px vertical). Larger than the rail throttle because a rail row is
-// twice the visual distance of a single card and needs proportionally
-// more time to be readable during transit. Without this throttle,
-// browser/OS key auto-repeat (~30/sec) hammers sectionIndex faster than
-// the 90ms-tau ease can catch up, so the target runs far ahead of the
-// visible position and the eye reads it as elastic lag rather than
-// continuous motion.
-export const HOLD_THROTTLE_PAGE_MS = 220
+// PageContainer's Up/Down input intentionally has NO hold throttle. Held-key
+// browser auto-repeat (~30/sec) drives sectionIndex directly, so the vertical
+// scroll target Y advances as a smooth ramp (~12,300 px/sec at 410px/rail),
+// not as discrete 410px jumps every 220ms the way our earlier throttled
+// version produced. Exponential smoothing tracking a smoothly-moving target
+// reaches a steady state where position velocity equals target velocity —
+// per-frame movement becomes near-constant, and the eye reads that as
+// "flow" rather than a staircase of eased steps. This matches the Rust
+// reference's motion model exactly (Rust does not throttle input either).
+// On release, target stops advancing and position eases the residual
+// steady-state lag (~2.7 rails at tau=90) to zero — giving the momentum-
+// like coast-and-settle that a throttled model can't produce.
 
 // Exponential-smoothing time constants (in milliseconds) for the rAF scroll
 // loops in ContentRail (horizontal) and PageContainer (vertical). Each loop
@@ -60,29 +62,6 @@ export const PAGE_SCROLL_TAU_MS = 90
 // would run forever chasing sub-pixel differences. 0.5 px is invisible at
 // TV viewing distance and small enough that the snap isn't perceptible.
 export const SETTLE_PX = 0.5
-
-// While the user is holding Up/Down, PageContainer's scroll switches from
-// exponential smoothing to constant-velocity motion. Reason: per-frame
-// movement under exponential ease varies ~12x across a single throttle
-// cycle (fast right after a press, decayed near-nothing before the next),
-// which reads as "shove-glide-almost-stop" rather than a continuous flow.
-// Constant velocity gives identical per-frame motion — the same visual
-// signature as a conveyor belt rather than a sequence of eased steps.
-//
-// HOLD_ACTIVE_MS is the window after the last accepted press during
-// which we stay in velocity mode. Sized slightly larger than the throttle
-// (220ms) so consecutive throttled presses never briefly drop out of
-// velocity mode between them. On genuine release, the last press falls
-// outside this window and we switch to ease for a natural settle-out.
-//
-// HOLD_VELOCITY_PX_PER_MS is tuned to be marginally faster than the
-// steady-state target-advance rate (RAIL_HEIGHT_PORTRAIT / throttle ≈
-// 1.86 px/ms). At 2.0 px/ms the position keeps up with the target and,
-// after long holds, briefly closes the small residual lag — never so
-// fast that it catches up mid-cycle and stalls waiting for the next
-// press. This keeps motion continuous under any hold duration.
-export const HOLD_ACTIVE_MS = 300
-export const HOLD_VELOCITY_PX_PER_MS = 2.0
 
 // One step of exponential smoothing. Given a current value, a target, and
 // the real elapsed frame time in ms, returns the new value one frame closer

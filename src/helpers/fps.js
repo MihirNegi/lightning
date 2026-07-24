@@ -34,7 +34,12 @@
 // flagged as a drop.
 //
 // Returns a stop() function to cancel the loop (call from a destroy hook).
-const REFRESH_MS = 300
+// 1000ms window: the previous 300ms cadence forced the Navbar's fpsLabel
+// Text component to re-rasterise glyphs and re-upload to the GPU roughly
+// 3x per second, which added measurable idle work of its own. 1s is still
+// snappy enough that the readout tracks user-visible perf change but
+// throttles the text-update cost by 3x.
+const REFRESH_MS = 1000
 
 // A frame counts as "jank" if it takes at least this multiple of the
 // baseline vsync period. 1.5x means dropping one full frame @60Hz (33ms >

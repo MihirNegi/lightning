@@ -81,11 +81,18 @@ color="#FFFFFF"
       // "how fast is it, how long per frame, how many dropped, how much
       // budget was stolen".
       this.stopFps = startFpsMeter((data) => {
-        this.fpsLabel =
+        // Build the display label first, then assign only if it actually
+        // differs from the previous one. Reassigning identical text to a
+        // reactive prop still triggers Blits' Text pipeline (rasterise +
+        // GPU upload) even though the pixels would be the same, so an
+        // early-out here avoids that cost on windows where fps + jank +
+        // rounded work all happen to match the previous sample.
+        const nextLabel =
           `${data.fps} fps   ` +
           `${data.avgFrameMs.toFixed(1)} ms   ` +
           `${data.jankCount} jank   ` +
           `work ${data.workMs.toFixed(1)}`
+        if (nextLabel !== this.fpsLabel) this.fpsLabel = nextLabel
       })
     },
     focus() {
