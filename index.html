@@ -3,6 +3,16 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <!--
+      Preconnect to the poster + hero image CDN. Establishes the DNS
+      lookup, TCP connection, and TLS handshake ahead of the first
+      posters resolving to real URLs — saves ~100-300ms on the first
+      cohort of image fetches per session, especially on TV networks
+      with high connection-setup latency. The `crossorigin` attribute
+      matches how new Image() and Blits' loader request the resource,
+      so the pre-established connection is actually reusable.
+    -->
+    <link rel="preconnect" href="https://picsum.photos" crossorigin />
     <title>lightDemo</title>
     <style>
       html,

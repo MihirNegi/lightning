@@ -56,6 +56,14 @@ const JANK_FALLBACK_MS = 25
 // taking a low-percentile of observed intervals gives the true refresh rate.
 const CAP_MEASURE_FRAMES = 60
 
+// Sample the work-ms probe every Nth frame instead of every frame. The
+// postMessage + timestamp round-trip is cheap but not free — on a
+// constrained TV browser doing it every rAF adds a measurable baseline.
+// The running average across the REFRESH_MS window is statistically
+// unchanged at N=4: work-ms per-frame is highly correlated frame-to-frame,
+// so 1-in-4 sampling captures the trend with 4x less overhead.
+const WORK_PROBE_EVERY_N_FRAMES = 4
+
 // Detect which rendering backend the browser is giving us. TV browsers on
 // old Chromium sometimes silently downgrade from WebGL2, and knowing which
 // one Blits is running on is the first thing to check when fps is low.
@@ -97,6 +105,8 @@ export function startFpsMeter(onUpdate) {
   let maxDt = 0
   let jankCount = 0
   let workMsAccum = 0
+  let workSamples = 0
+  let framesSinceProbe = WORK_PROBE_EVERY_N_FRAMES
   let fpsClock = last
   let rafId = 0
   let cancelled = false
@@ -138,11 +148,19 @@ export function startFpsMeter(onUpdate) {
     fpsN++
     if (dt > maxDt) maxDt = dt
 
-    // Accumulate the previous frame's measured work. lastWorkMs was set by
-    // the onmessage handler after that frame's paint completed; it's zero
-    // on the very first frame (no prior probe fired), which biases the
-    // first window's average slightly low but is invisible after boot.
-    workMsAccum += lastWorkMs
+    // Sample work only on probe frames. Between probes, lastWorkMs still
+    // holds the prior probe's reading — we don't accumulate it, so the
+    // window's average reflects genuine 1-in-N sampling rather than
+    // repeated stale values. workSamples tracks the denominator so the
+    // divisor stays correct even if the window boundary lands off a
+    // probe frame.
+    framesSinceProbe++
+    const isProbeFrame = framesSinceProbe >= WORK_PROBE_EVERY_N_FRAMES
+    if (isProbeFrame) {
+      workMsAccum += lastWorkMs
+      workSamples++
+      framesSinceProbe = 0
+    }
 
     // Jank threshold scales with the detected refresh cap. Before cap
     // locks, use the 60Hz fallback so early-boot jank still gets flagged.
@@ -152,7 +170,7 @@ export function startFpsMeter(onUpdate) {
     if (now - fpsClock > REFRESH_MS) {
       const avgFrame = fpsMs / fpsN
       const fps = Math.round(1000 / avgFrame)
-      const workMs = workMsAccum / fpsN
+      const workMs = workSamples > 0 ? workMsAccum / workSamples : 0
       const label =
         `${fps} fps   ` +
         `${avgFrame.toFixed(1)} ms   ` +
@@ -174,12 +192,15 @@ export function startFpsMeter(onUpdate) {
       maxDt = 0
       jankCount = 0
       workMsAccum = 0
+      workSamples = 0
       fpsClock = now
     }
 
-    // Post AFTER accounting so this frame's paint work is what the next
-    // rAF observes as lastWorkMs.
-    workChannel.port2.postMessage(null)
+    // Only post on probe frames — that's the whole point of the throttle.
+    // The message dispatches after THIS frame's paint completes, and the
+    // next probe frame reads it as lastWorkMs (with N-1 idle frames in
+    // between, which is fine for the running-average consumer).
+    if (isProbeFrame) workChannel.port2.postMessage(null)
     rafId = requestAnimationFrame(frame)
   }
 

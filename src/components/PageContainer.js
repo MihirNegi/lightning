@@ -7,6 +7,7 @@ import {
   cardDimsFor,
 } from '../constants/layout.js'
 import { PAGE_SCROLL_TAU_MS, SETTLE_PX, easeStep } from '../helpers/animations.js'
+import { prefetchImages } from '../helpers/prefetch.js'
 import HeroCarousel from './HeroCarousel.js'
 import ContentRail, { FRAME_MARGIN } from './ContentRail.js'
 
@@ -29,6 +30,20 @@ const CARD_INNER_TOP_Y = 8
 const RAIL_BUFFER_UP = 1
 const RAIL_BUFFER_DOWN = 1
 const RAIL_VISIBLE_ROWS = 3
+
+// How many rails PAST the mounted window to warm the HTTP image cache
+// for on scroll-settle. Same idea as Rust's LOAD_RADIUS beyond the on-
+// screen set — by the time the user scrolls those rails into view, their
+// posters have already fetched, so decode + GPU upload lands on a cached
+// blob rather than a cold network request. Kept tight because prefetch
+// still competes with the current viewport's image traffic on the same
+// HTTP/2 connection.
+const RAIL_PREFETCH_LOOKAHEAD = 2
+// How many cards from the head of each prefetched rail to warm. The card-
+// window in ContentRail is 8 wide, but only the leftmost 3-4 are visible
+// on the first mount before the rail's own scroll settles. Prefetching
+// beyond that competes with visible cards for connection slots.
+const PREFETCH_CARDS_PER_RAIL = 4
 
 // Where the first content row lands on screen — matches the offset the
 // vertical scroll produces when snapping any rail into place. Kept in one
@@ -160,10 +175,34 @@ export default Blits.Component('PageContainer', {
         let cursor = baseY
         this._railsCache = this.rails.map((rail) => {
           const { railH } = cardDimsFor(rail.orientation)
-          const positioned = { ...rail, _y: cursor, _railH: railH }
+          // Explicit field forwarding + a getter for `items` — the source
+          // rail's items array is materialised lazily on first access
+          // (see contentFactory.js). Spreading `{...rail}` would trigger
+          // the getter for every rail during layout math, forcing all
+          // items to build on tab mount and undoing the laziness. The
+          // getter forwards each access to the source rail so mounted
+          // ContentRail instances still see items as a plain array, but
+          // rails outside the virtualisation window never touch it.
+          const positioned = {
+            id: rail.id,
+            title: rail.title,
+            orientation: rail.orientation,
+            _y: cursor,
+            _railH: railH,
+          }
+          Object.defineProperty(positioned, 'items', {
+            enumerable: true,
+            configurable: true,
+            get() {
+              return rail.items
+            },
+          })
           cursor += railH
           return positioned
         })
+        // Reset the O(1) rail-index cache — a new rails array invalidates
+        // the previous "closest rail" bookkeeping.
+        this._lastRailIdx = 0
       }
       return this._railsCache
     },
@@ -245,6 +284,14 @@ export default Blits.Component('PageContainer', {
     init() {
       // Navbar emits this when the user presses Down/Enter to enter the page.
       this.$listen('nav:focus-content', () => this.focusCurrentSection())
+      // Warm the HTTP image cache for rails just past the initial mount
+      // window. Rails 0..VISIBLE+DOWN are already mounting and their
+      // posters are fetching; this queues fetches for rails at
+      // firstBeyond..firstBeyond+LOOKAHEAD-1 so the user's first Down
+      // press lands on a rail whose images are already in the browser
+      // cache. Runs through requestIdleCallback so it does not steal
+      // budget from the initial paint.
+      this.prefetchAdjacentRails()
     },
     destroy() {
       if (this.rafHandle) {
@@ -302,23 +349,66 @@ export default Blits.Component('PageContainer', {
     // replaces the previous "update once per input" approach, which under
     // sustained hold churned mounts on every accepted press even after the
     // eventual final window was known.
+    //
+    // O(1) per frame: rail Y offsets are monotonically increasing, so
+    // between frames the closest rail can only move by ±1 (or a few steps
+    // during a fast hold). We cache the last frame's answer in
+    // _lastRailIdx and walk in whichever direction reduces the delta. The
+    // previous implementation did a full O(N) scan every frame — fine at
+    // 20 rails, wasteful past that. Falls back gracefully when the cache
+    // is out of range (initial mount, rails prop swap) by clamping into
+    // range at the top.
     updateRailWindow() {
       const targetY = CONTENT_TOP_Y - this.animY
       const rails = this.railsWithLayout
       if (rails.length === 0) return
-      let currentRail = 0
-      let bestDelta = Infinity
-      for (let i = 0; i < rails.length; i++) {
-        const delta = Math.abs(rails[i]._y - targetY)
-        if (delta < bestDelta) {
-          bestDelta = delta
-          currentRail = i
-        }
+      let idx = this._lastRailIdx
+      if (idx == null || idx < 0 || idx >= rails.length) idx = 0
+      let bestDelta = Math.abs(rails[idx]._y - targetY)
+      while (idx > 0) {
+        const prevDelta = Math.abs(rails[idx - 1]._y - targetY)
+        if (prevDelta >= bestDelta) break
+        idx--
+        bestDelta = prevDelta
       }
-      const newStart = Math.max(0, currentRail - RAIL_BUFFER_UP)
-      const newEnd = currentRail + RAIL_VISIBLE_ROWS + RAIL_BUFFER_DOWN
+      while (idx < rails.length - 1) {
+        const nextDelta = Math.abs(rails[idx + 1]._y - targetY)
+        if (nextDelta >= bestDelta) break
+        idx++
+        bestDelta = nextDelta
+      }
+      this._lastRailIdx = idx
+      const newStart = Math.max(0, idx - RAIL_BUFFER_UP)
+      const newEnd = idx + RAIL_VISIBLE_ROWS + RAIL_BUFFER_DOWN
       if (newStart !== this.railWinStart) this.railWinStart = newStart
       if (newEnd !== this.railWinEnd) this.railWinEnd = newEnd
+    },
+    // Warm the browser HTTP cache for images on rails just past the mounted
+    // window. Fires only when the vertical scroll has settled so it never
+    // competes with the on-screen scroll for main-thread budget or
+    // connection slots — the same "quiet during motion" gate that
+    // PosterCard's activeSrc uses. The prefetch helper further defers each
+    // batch to requestIdleCallback and dedupes URLs, so calling this on
+    // every settle is safe.
+    prefetchAdjacentRails() {
+      const rails = this.railsWithLayout
+      if (rails.length === 0) return
+      const idx = this._lastRailIdx == null ? 0 : this._lastRailIdx
+      const firstBeyond = idx + RAIL_VISIBLE_ROWS + RAIL_BUFFER_DOWN
+      const lastBeyond = Math.min(rails.length - 1, firstBeyond + RAIL_PREFETCH_LOOKAHEAD - 1)
+      const urls = []
+      for (let r = firstBeyond; r <= lastBeyond; r++) {
+        const rail = rails[r]
+        if (!rail) continue
+        const items = rail.items
+        if (!items) continue
+        const cap = Math.min(PREFETCH_CARDS_PER_RAIL, items.length)
+        for (let i = 0; i < cap; i++) {
+          const url = items[i] && items[i].image
+          if (url) urls.push(url)
+        }
+      }
+      if (urls.length) prefetchImages(urls)
     },
     // Start the rAF scroll loop if it isn't already running. Also flips
     // isScrolling on — cards downstream use this to suppress mount-time
@@ -352,6 +442,7 @@ export default Blits.Component('PageContainer', {
         if (this.isScrolling) this.isScrolling = false
         this.updateRailWindow()
         this.focusCurrentSection()
+        this.prefetchAdjacentRails()
         return
       }
       this.animY = easeStep(this.animY, target, dt, PAGE_SCROLL_TAU_MS)

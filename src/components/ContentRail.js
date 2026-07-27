@@ -5,20 +5,21 @@ import PosterCard from './PosterCard.js'
 
 // Lazy-mount window: how many cards to render around the current selection.
 // BEFORE=1 gives us the peek tile that renders in the black area to the
-// left of the rail title — that's the functional minimum. AFTER=6 is the
-// number needed to fill the clip out to the right stage edge: the card
-// at focus+6 sits at absolute x = 1792 and ends at 2052, covering the
-// full 1920 stage width. Cards outside the window are unmounted and
-// their image textures freed.
+// left of the rail title — that's the functional minimum. AFTER=5 fills
+// the clip most of the way out to the right stage edge: card at focus+5
+// sits at absolute x = 1504 and ends at 1764, leaving a ~150px trailing
+// gap before the 1920 boundary that the previous card mounting during
+// horizontal scroll fills in before the eye can register the miss.
 //
-// These are deliberately tight to minimise per-rail-mount cost — a fresh
-// ContentRail creates 1+1+6=8 cards up front (down from 10 before). Each
-// card is a small Blits component with its own reactive bindings, and
-// creating them all in one synchronous burst is the main source of the
-// per-rail-boundary jank observed during vertical hold-scroll. Tighter
+// The window is deliberately tight to minimise per-rail-mount cost — a
+// fresh ContentRail creates 1+1+5=7 cards up front (down from 8, which
+// was down from 10). Each card is a small Blits component with its own
+// reactive bindings, and creating them all in one synchronous burst is
+// the main source of the per-rail-boundary jank observed during vertical
+// hold-scroll (one new rail crossing = one instantiation burst). Tighter
 // window = smaller burst.
 const WINDOW_BEFORE = 1
-const WINDOW_AFTER = 6
+const WINDOW_AFTER = 5
 
 // Static vertical offset of each card inside the clip. 8px of breathing
 // room above the card, matched by a 16px pad in clipH below.
@@ -284,8 +285,13 @@ export default Blits.Component('ContentRail', {
     //   scrollActual = selectedIndex * step - CONTENT_PADDING_X
     // For card 0: scrollActual = -CONTENT_PADDING_X, so card 0 sits at
     // abs-x = 64 and the black band from 0..64 has no card to peek in.
+    //
+    // Writes to scrollTarget dispatch reactivity; skip the assignment
+    // when the value is unchanged (an edge-clamped press that couldn't
+    // actually advance selectedIndex, or a repeat press racing settle).
     updateScrollTarget() {
-      this.scrollTarget = this.selectedIndex * this.cardStep - CONTENT_PADDING_X
+      const target = this.selectedIndex * this.cardStep - CONTENT_PADDING_X
+      if (target !== this.scrollTarget) this.scrollTarget = target
     },
     // Start the RAF scroll loop if it isn't already running. Called from
     // every accepted input. If the loop is already running, presses just
@@ -324,13 +330,24 @@ export default Blits.Component('ContentRail', {
     // in place would not trigger the reactive setter that drives the
     // ':for' effect. Each entry carries an absolute posX so the window
     // can slide without shifting any card's on-screen position.
+    //
+    // Under sustained hold-scroll, selectedIndex advances every accepted
+    // press but the window edges only slide when the new selection would
+    // move a card in or out. Between those crossings the [start, end)
+    // pair is identical to the previous frame's — skipping the alloc +
+    // reactive dispatch there is the biggest per-press win in this hot
+    // path. _lastWinStart/_lastWinEnd are plain instance fields (not
+    // reactive state) so setting them is free.
     rebuildVisibleItems() {
       const start = Math.max(0, this.selectedIndex - WINDOW_BEFORE)
       const end = Math.min(this.items.length, this.selectedIndex + WINDOW_AFTER + 1)
+      if (this._lastWinStart === start && this._lastWinEnd === end) return
+      this._lastWinStart = start
+      this._lastWinEnd = end
       const step = this.cardStep
-      const slice = []
+      const slice = new Array(end - start)
       for (let i = start; i < end; i++) {
-        slice.push({ ...this.items[i], posX: i * step })
+        slice[i - start] = { ...this.items[i], posX: i * step }
       }
       this.visibleItems = slice
     },

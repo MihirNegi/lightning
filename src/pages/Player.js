@@ -87,8 +87,22 @@ export default Blits.Component('Player', {
       const frac = Math.min(Math.max(this.currentTime / this.duration, 0), 1)
       return Math.round(1664 * frac)
     },
+    // Integer intermediates so the timeLabel string only rebuilds when
+    // the displayed second actually rolls over — not on every timeupdate
+    // event from the DOM <video>. timeupdate fires ~4Hz during playback,
+    // and 3-in-4 of those fires land on the same integer second: without
+    // this intermediate every one re-evaluated timeLabel and re-rasterised
+    // the Text glyphs, even though the pixels were identical. Blits'
+    // reactive graph propagates dep changes only when the intermediate
+    // value differs, so timeLabel now churns at ~1Hz instead of ~4Hz.
+    currentSeconds() {
+      return Math.floor(this.currentTime)
+    },
+    durationSeconds() {
+      return Math.floor(this.duration)
+    },
     timeLabel() {
-      return `${formatSeconds(this.currentTime)}  /  ${formatSeconds(this.duration)}`
+      return `${formatSecondsFromInt(this.currentSeconds)}  /  ${formatSecondsFromInt(this.durationSeconds)}`
     },
   },
   hooks: {
@@ -177,11 +191,13 @@ export default Blits.Component('Player', {
   },
 })
 
-// Format a seconds count as m:ss or h:mm:ss. Returns 0:00 for non-finite
-// inputs so the label is always well-formed while the metadata is loading.
-function formatSeconds(seconds) {
-  if (!Number.isFinite(seconds) || seconds < 0) return '0:00'
-  const total = Math.floor(seconds)
+// Format an integer seconds count as m:ss or h:mm:ss. Takes an int (not
+// a float) so callers can pre-floor upstream — the timeLabel computed
+// uses this via a Math.floor()-based intermediate so its dep graph
+// doesn't fire on sub-second changes. Returns 0:00 for non-finite inputs
+// so the label is always well-formed while the metadata is loading.
+function formatSecondsFromInt(total) {
+  if (!Number.isFinite(total) || total < 0) return '0:00'
   const s = total % 60
   const m = Math.floor(total / 60) % 60
   const h = Math.floor(total / 3600)
