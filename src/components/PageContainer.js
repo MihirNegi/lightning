@@ -316,6 +316,7 @@ export default Blits.Component('PageContainer', {
       this.sectionIndex++
       this._heldDir = 1
       this._heldMs = 0
+      this.updateRailWindow()
       this.ensureScrollLoopRunning()
       this.ensureHoldRunning()
     },
@@ -328,6 +329,7 @@ export default Blits.Component('PageContainer', {
       this.sectionIndex--
       this._heldDir = -1
       this._heldMs = 0
+      this.updateRailWindow()
       this.ensureScrollLoopRunning()
       this.ensureHoldRunning()
     },
@@ -352,45 +354,18 @@ export default Blits.Component('PageContainer', {
       const target = this.$select(`rail${railIndex}`)
       if (target) target.$focus()
     },
-    // Slide the mounted-rail window based on the CURRENT VISUAL scroll
-    // position (animY), not the target sectionIndex. Called every scrollTick
-    // frame, so as animY eases toward the target the window follows —
-    // off-screen rails mount just before they enter the viewport, and by
-    // settle-time the window already contains the destination rail. This
-    // replaces the previous "update once per input" approach, which under
-    // sustained hold churned mounts on every accepted press even after the
-    // eventual final window was known.
-    //
-    // O(1) per frame: rail Y offsets are monotonically increasing, so
-    // between frames the closest rail can only move by ±1 (or a few steps
-    // during a fast hold). We cache the last frame's answer in
-    // _lastRailIdx and walk in whichever direction reduces the delta. The
-    // previous implementation did a full O(N) scan every frame — fine at
-    // 20 rails, wasteful past that. Falls back gracefully when the cache
-    // is out of range (initial mount, rails prop swap) by clamping into
-    // range at the top.
+    // Update the mounted-rail window from sectionIndex. Called only when
+    // sectionIndex changes (not every animation frame) so ContentRail
+    // lifecycle events never fire mid-animation — that was the source of
+    // per-frame ~20ms mount spikes that dragged vertical-scroll FPS to 38.
+    // With RAIL_BUFFER_DOWN = 1, the next rail is pre-mounted the moment
+    // sectionIndex advances, well before animY reaches it.
     updateRailWindow() {
-      const targetY = CONTENT_TOP_Y - this.animY
       const rails = this.railsWithLayout
       if (rails.length === 0) return
-      let idx = this._lastRailIdx
-      if (idx == null || idx < 0 || idx >= rails.length) idx = 0
-      let bestDelta = Math.abs(rails[idx]._y - targetY)
-      while (idx > 0) {
-        const prevDelta = Math.abs(rails[idx - 1]._y - targetY)
-        if (prevDelta >= bestDelta) break
-        idx--
-        bestDelta = prevDelta
-      }
-      while (idx < rails.length - 1) {
-        const nextDelta = Math.abs(rails[idx + 1]._y - targetY)
-        if (nextDelta >= bestDelta) break
-        idx++
-        bestDelta = nextDelta
-      }
-      this._lastRailIdx = idx
-      const newStart = Math.max(0, idx - RAIL_BUFFER_UP)
-      const newEnd = idx + RAIL_VISIBLE_ROWS + RAIL_BUFFER_DOWN
+      const railIndex = this.hasHero ? Math.max(0, this.sectionIndex - 1) : this.sectionIndex
+      const newStart = Math.max(0, railIndex - RAIL_BUFFER_UP)
+      const newEnd = Math.min(rails.length, railIndex + RAIL_VISIBLE_ROWS + RAIL_BUFFER_DOWN)
       if (newStart !== this.railWinStart) this.railWinStart = newStart
       if (newEnd !== this.railWinEnd) this.railWinEnd = newEnd
     },
@@ -404,7 +379,7 @@ export default Blits.Component('PageContainer', {
     prefetchAdjacentRails() {
       const rails = this.railsWithLayout
       if (rails.length === 0) return
-      const idx = this._lastRailIdx == null ? 0 : this._lastRailIdx
+      const idx = this.hasHero ? Math.max(0, this.sectionIndex - 1) : this.sectionIndex
       const firstBeyond = idx + RAIL_VISIBLE_ROWS + RAIL_BUFFER_DOWN
       const lastBeyond = Math.min(rails.length - 1, firstBeyond + RAIL_PREFETCH_LOOKAHEAD - 1)
       const urls = []
@@ -448,9 +423,11 @@ export default Blits.Component('PageContainer', {
       if (ahead >= HOLD_AHEAD * railH) return
       if (dir > 0 && this.sectionIndex < this.maxSectionIndex) {
         this.sectionIndex++
+        this.updateRailWindow()
         this.ensureScrollLoopRunning()
       } else if (dir < 0 && this.sectionIndex > 0) {
         this.sectionIndex--
+        this.updateRailWindow()
         this.ensureScrollLoopRunning()
       } else {
         this.stopHold()
@@ -492,7 +469,6 @@ export default Blits.Component('PageContainer', {
         return
       }
       this.animY = easeStep(this.animY, target, dt, PAGE_SCROLL_TAU_MS)
-      this.updateRailWindow()
     },
   },
 })
