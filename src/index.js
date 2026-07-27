@@ -29,6 +29,13 @@ Blits.Launch(App, 'app', {
   h: 1080,
   debugLevel: 0,
   enableMouse: false,
+  // Cap at 30fps for consistent frame pacing. Lightning3's retained-mode scene
+  // graph recomputes world transforms for all ~45 child nodes every frame
+  // animY changes — this pushes frames to ~14-17ms, right at the 60fps budget
+  // edge. Any GC pause or image decode tips a frame over 16.7ms, producing
+  // jittery 38fps. At 30fps the 33ms budget absorbs that overhead cleanly,
+  // giving consistent smooth motion rather than jittery near-60fps.
+  maxFPS: 30,
   // Texture sampling quality. Trades sharpness for per-frame GPU work.
   // 'low' uses the smallest device pixel ratio — cheapest fragment shader
   // path, fewest texels sampled per quad. Softer edges on desktop dev but
