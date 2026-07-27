@@ -32,16 +32,17 @@ color="#00B3FF"
         <Text
           :content="$tab.label"
           size="28"
-    :color="$index === $focusIndex ? '#FFFFFF' : '#AAAAAA'"
-        />
-        <Element
-          y="42"
-          h="4"
-          :rounded="2"
-          color="#00B3FF"
-          :w.transition="{value: $index === $focusIndex ? 70 : 0, duration: 300, easing: 'cubic-bezier(0.4, 0, 0.2, 1)'}"
+          :color="$index === $focusIndex ? '#FFFFFF' : '#AAAAAA'"
         />
       </Element>
+      <Element
+        :x.transition="{value: 260 + $focusIndex * 140, duration: 200, easing: 'ease-out'}"
+        y="88"
+        w="70"
+        h="4"
+        :rounded="2"
+        color="#00B3FF"
+      />
       <Text
         :content="$fpsLabel"
         size="24"
