@@ -1,6 +1,7 @@
 import Blits from '@lightningjs/blits'
 import { CARD_GAP, CONTENT_PADDING_X, STAGE_W, cardDimsFor } from '../constants/layout.js'
 import { SETTLE_PX, easeStep } from '../helpers/animations.js'
+import { registerTick, unregisterTick } from '../helpers/rafLoop.js'
 import PosterCard from './PosterCard.js'
 
 // Lazy-mount window: how many cards to render around the current selection.
@@ -140,14 +141,6 @@ export default Blits.Component('ContentRail', {
       // computed here would be evaluated once at mount and never update,
       // so scrolling past the initial window would show an empty rail.
       visibleItems: [],
-      // Active requestAnimationFrame id, or 0 if no loop is running.
-      // Stored on the instance (not as reactive state) so we don't
-      // trigger reactivity dispatch every time the loop starts/stops.
-      rafHandle: 0,
-      // Timestamp of the last RAF tick, used to compute per-frame dt so
-      // motion is proportional to real elapsed time (robust to frame
-      // pacing jitter) rather than assumed to be 16.7ms per tick.
-      lastFrameTime: 0,
       // Static offset for the card's y inside the clip.
       cardOffsetY: CARD_OFFSET_Y,
       // True while this rail's rAF scroll loop is easing scrollActual
@@ -215,12 +208,10 @@ export default Blits.Component('ContentRail', {
       this.scrollActual = this.scrollTarget
       this.rebuildVisibleItems()
     },
-    // Cancel any in-flight RAF so we don't touch state on a component
-    // that's already been torn down (which would throw on the next tick).
     destroy() {
-      if (this.rafHandle) {
-        cancelAnimationFrame(this.rafHandle)
-        this.rafHandle = 0
+      if (this._scrollActive && this._scrollTickFn) {
+        unregisterTick(this._scrollTickFn)
+        this._scrollActive = false
       }
     },
   },
@@ -293,37 +284,30 @@ export default Blits.Component('ContentRail', {
       const target = this.selectedIndex * this.cardStep - CONTENT_PADDING_X
       if (target !== this.scrollTarget) this.scrollTarget = target
     },
-    // Start the RAF scroll loop if it isn't already running. Called from
-    // every accepted input. If the loop is already running, presses just
-    // update scrollTarget and the loop picks up the new target on its
-    // next tick — no restart, no velocity reset, no visible hitch. Also
-    // flips railIsScrolling on so downstream PosterCards can defer their
-    // image src commits (see anyIsScrolling computed).
+    // Register with the global RAF loop if not already running. Presses
+    // mid-motion just update scrollTarget; the loop picks up the new target
+    // on its next tick with no restart or velocity reset. Also flips
+    // railIsScrolling so PosterCards defer image src commits while moving.
     ensureScrollLoopRunning() {
-      if (this.rafHandle) return
+      if (this._scrollActive) return
+      this._scrollActive = true
       if (!this.railIsScrolling) this.railIsScrolling = true
-      this.lastFrameTime = performance.now()
-      this.rafHandle = requestAnimationFrame((now) => this.scrollTick(now))
+      if (!this._scrollTickFn) this._scrollTickFn = (dt) => this.scrollTick(dt)
+      registerTick(this._scrollTickFn)
     },
-    // Per-frame step. Moves scrollActual toward scrollTarget with one call
-    // to easeStep — exponential smoothing whose step size is a fraction of
-    // the remaining distance, so velocity naturally decays as motion nears
-    // the target. Reads target fresh each tick, so a new press mid-motion
-    // just extends the target and the glide continues from wherever the
-    // animation currently is. Stops once |remaining| < SETTLE_PX so idle
-    // rails do not consume rAF slots chasing sub-pixel differences.
-    scrollTick(now) {
-      const dt = now - this.lastFrameTime
-      this.lastFrameTime = now
+    // Per-frame step driven by the global RAF loop. dt is the real elapsed
+    // time since the last frame — frame-rate independent easing. Unregisters
+    // when |remaining| < SETTLE_PX so idle rails hold no loop slot.
+    scrollTick(dt) {
       const remaining = this.scrollTarget - this.scrollActual
       if (Math.abs(remaining) < SETTLE_PX) {
         this.scrollActual = this.scrollTarget
-        this.rafHandle = 0
+        this._scrollActive = false
         if (this.railIsScrolling) this.railIsScrolling = false
+        unregisterTick(this._scrollTickFn)
         return
       }
       this.scrollActual = easeStep(this.scrollActual, this.scrollTarget, dt)
-      this.rafHandle = requestAnimationFrame((next) => this.scrollTick(next))
     },
     // Rebuild the windowed visibleItems slice around the current
     // selection. Assigning a new array reference is required — mutating

@@ -7,6 +7,7 @@ import {
   cardDimsFor,
 } from '../constants/layout.js'
 import { PAGE_SCROLL_TAU_MS, SETTLE_PX, easeStep } from '../helpers/animations.js'
+import { registerTick, unregisterTick } from '../helpers/rafLoop.js'
 import { prefetchImages } from '../helpers/prefetch.js'
 import HeroCarousel from './HeroCarousel.js'
 import ContentRail, { FRAME_MARGIN } from './ContentRail.js'
@@ -130,11 +131,6 @@ export default Blits.Component('PageContainer', {
       // Current animated Y for the outer container. Bound directly to the
       // template — every scrollTick assignment repositions the whole stack.
       animY: 0,
-      // Active requestAnimationFrame id, or 0 if no loop is running.
-      rafHandle: 0,
-      // Timestamp of the last rAF tick, used to compute per-frame dt so
-      // easeStep is proportional to real elapsed time.
-      lastFrameTime: 0,
       // True while animY is actively easing toward a target. Cascaded down
       // through ContentRail into PosterCard so cards that mount mid-scroll
       // snap alpha to 1 instead of running a 200ms fade. Cleared on the
@@ -294,9 +290,9 @@ export default Blits.Component('PageContainer', {
       this.prefetchAdjacentRails()
     },
     destroy() {
-      if (this.rafHandle) {
-        cancelAnimationFrame(this.rafHandle)
-        this.rafHandle = 0
+      if (this._scrollActive && this._scrollTickFn) {
+        unregisterTick(this._scrollTickFn)
+        this._scrollActive = false
       }
     },
   },
@@ -410,36 +406,27 @@ export default Blits.Component('PageContainer', {
       }
       if (urls.length) prefetchImages(urls)
     },
-    // Start the rAF scroll loop if it isn't already running. Also flips
-    // isScrolling on — cards downstream use this to suppress mount-time
-    // alpha fades and defer image src loading until the scroll settles.
+    // Register with the global RAF loop if not already running. Also flips
+    // isScrolling so cards downstream defer image src loading until settle.
     ensureScrollLoopRunning() {
-      if (this.rafHandle) return
+      if (this._scrollActive) return
+      this._scrollActive = true
       if (!this.isScrolling) this.isScrolling = true
-      this.lastFrameTime = performance.now()
-      this.rafHandle = requestAnimationFrame((now) => this.scrollTick(now))
+      if (!this._scrollTickFn) this._scrollTickFn = (dt) => this.scrollTick(dt)
+      registerTick(this._scrollTickFn)
     },
-    // Per-frame step. Exponential smoothing toward -scrollOffset with
-    // PAGE_SCROLL_TAU_MS. Matches the Rust reference's motion model. With
-    // input un-throttled, held-key auto-repeat advances sectionIndex (and
-    // therefore target) at the browser's native rate — the ease chasing
-    // that smoothly-moving target reaches a steady state where per-frame
-    // motion is near-constant, which is what reads as flow. On release,
-    // target stops advancing and the residual steady-state lag eases out
-    // naturally, giving the momentum-like coast-and-settle that a
-    // throttled/stepped model can't produce. Also slides the rail-mount
-    // window to follow the new visual position; on settle, fires focus
-    // once so Blits' focus swap (and its 200ms title fade) plays exactly
-    // once per hold-burst rather than per press.
-    scrollTick(now) {
-      const dt = now - this.lastFrameTime
-      this.lastFrameTime = now
+    // Per-frame step driven by the global RAF loop. dt is real elapsed time —
+    // frame-rate independent easing. On settle, unregisters from the global
+    // loop and fires focus once so Blits' title fade plays once per
+    // hold-burst rather than per press.
+    scrollTick(dt) {
       const target = -this.scrollOffset
       const remaining = target - this.animY
       if (Math.abs(remaining) < SETTLE_PX) {
         this.animY = target
-        this.rafHandle = 0
+        this._scrollActive = false
         if (this.isScrolling) this.isScrolling = false
+        unregisterTick(this._scrollTickFn)
         this.updateRailWindow()
         this.focusCurrentSection()
         this.prefetchAdjacentRails()
@@ -447,7 +434,6 @@ export default Blits.Component('PageContainer', {
       }
       this.animY = easeStep(this.animY, target, dt, PAGE_SCROLL_TAU_MS)
       this.updateRailWindow()
-      this.rafHandle = requestAnimationFrame((next) => this.scrollTick(next))
     },
   },
 })

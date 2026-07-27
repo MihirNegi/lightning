@@ -6,13 +6,6 @@ Blits.Launch(App, 'app', {
   h: 1080,
   debugLevel: 0,
   enableMouse: false,
-  // Cap the render loop at 30fps. Composite of hero + rails + text
-  // occasionally exceeds a 16.7ms frame budget (60fps), which drops frames
-  // mid-scroll and reads as a hitch even when the tween config itself is
-  // correct. 30fps gives 33ms per frame — 2x headroom — so pacing is
-  // consistent. Consistent 30fps looks noticeably smoother than
-  // jittery-almost-60fps for a slow scroll.
-  maxFPS: 30,
   // Texture sampling quality. Trades sharpness for per-frame GPU work.
   // 'low' uses the smallest device pixel ratio — cheapest fragment shader
   // path, fewest texels sampled per quad. Softer edges on desktop dev but
