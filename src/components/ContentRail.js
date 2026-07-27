@@ -1,6 +1,12 @@
 import Blits from '@lightningjs/blits'
 import { CARD_GAP, CONTENT_PADDING_X, STAGE_W, cardDimsFor } from '../constants/layout.js'
-import { SETTLE_PX, easeStep } from '../helpers/animations.js'
+import {
+  SETTLE_PX,
+  easeStep,
+  HOLD_SCROLL_DELAY_MS,
+  HOLD_AHEAD,
+  RELEASE_MIN_RUN,
+} from '../helpers/animations.js'
 import { registerTick, unregisterTick } from '../helpers/rafLoop.js'
 import PosterCard from './PosterCard.js'
 
@@ -26,21 +32,6 @@ const WINDOW_AFTER = 5
 // room above the card, matched by a 16px pad in clipH below.
 const CARD_OFFSET_Y = 8
 
-// Hold-detect + advance-boost. Under sustained hold the browser fires
-// keydown events at its auto-repeat rate — commonly ~30/sec on desktop
-// Chrome but as slow as 5-10/sec on some systems / TV browsers. At the
-// low end that caps the horizontal scroll at ~5-10 cards/sec, which
-// reads as sluggish regardless of tau. To decouple hold-speed from the
-// browser's auto-repeat rate, we advance selectedIndex by HOLD_ADVANCE
-// (instead of 1) when the previous accepted press was less than
-// HOLD_DETECT_MS ago — a straightforward "if presses are arriving
-// rapidly, it's a hold, skip cards". Single taps and deliberate slow
-// tapping stay at 1-per-press so users can still land precisely on any
-// specific card. Threshold picked slightly above typical auto-repeat
-// interval so any real hold triggers boost, but two deliberate taps
-// don't.
-const HOLD_DETECT_MS = 200
-const HOLD_ADVANCE = 2
 // Frame-around-card margin: the focus frame sits 5px outside the card on
 // every side. Exported so PageContainer's global frame overlay can size
 // itself consistently with the rail's card layout.
@@ -208,7 +199,29 @@ export default Blits.Component('ContentRail', {
       this.scrollActual = this.scrollTarget
       this.rebuildVisibleItems()
     },
+    // Register a keyup listener so we can run releaseEase when the user
+    // lifts the held key. Only active while this rail has Blits focus.
+    focus() {
+      if (!this._keyupFn) {
+        this._keyupFn = (e) => {
+          if (e.key === 'ArrowLeft' && this._heldDir === -1) {
+            if (this._heldMs >= HOLD_SCROLL_DELAY_MS) this.releaseEase(-1)
+            this.stopHold()
+          } else if (e.key === 'ArrowRight' && this._heldDir === 1) {
+            if (this._heldMs >= HOLD_SCROLL_DELAY_MS) this.releaseEase(1)
+            this.stopHold()
+          }
+        }
+      }
+      document.addEventListener('keyup', this._keyupFn)
+    },
+    unfocus() {
+      if (this._keyupFn) document.removeEventListener('keyup', this._keyupFn)
+      this.stopHold()
+    },
     destroy() {
+      if (this._keyupFn) document.removeEventListener('keyup', this._keyupFn)
+      this.stopHold()
       if (this._scrollActive && this._scrollTickFn) {
         unregisterTick(this._scrollTickFn)
         this._scrollActive = false
@@ -216,39 +229,29 @@ export default Blits.Component('ContentRail', {
     },
   },
   input: {
-    // No hold throttle on Left/Right — held-key auto-repeat advances
-    // selectedIndex at the browser's native rate so scrollTarget advances
-    // as a smooth ramp and the exp-smoothing ease chasing that ramp
-    // produces near-constant per-frame motion (the "flow" character).
-    //
-    // Boost: if the previous accepted press was less than HOLD_DETECT_MS
-    // ago, we advance by HOLD_ADVANCE cards instead of 1 — doubling the
-    // effective hold velocity on systems where browser auto-repeat is
-    // slow. Single taps and deliberate slow tapping keep advance=1, so
-    // precise landing on any card is preserved. _lastInputAt is a plain
-    // instance field (not reactive state) since neither the template nor
-    // any computed reads it.
+    // Initial press: advance one card and start the hold timer. OS auto-repeat
+    // is suppressed in index.js so this fires only once per physical keydown.
+    // The hold-tick registered by ensureHoldRunning() takes over after
+    // HOLD_SCROLL_DELAY_MS and chains advances frame-by-frame (likerust model).
     left() {
       if (this.selectedIndex <= 0) return
-      const now = performance.now()
-      const isHold = now - (this._lastInputAt || -Infinity) < HOLD_DETECT_MS
-      this._lastInputAt = now
-      const advance = isHold ? HOLD_ADVANCE : 1
-      this.selectedIndex = Math.max(0, this.selectedIndex - advance)
+      this.selectedIndex--
+      this._heldDir = -1
+      this._heldMs = 0
       this.updateScrollTarget()
       this.rebuildVisibleItems()
       this.ensureScrollLoopRunning()
+      this.ensureHoldRunning()
     },
     right() {
       if (this.selectedIndex >= this.items.length - 1) return
-      const now = performance.now()
-      const isHold = now - (this._lastInputAt || -Infinity) < HOLD_DETECT_MS
-      this._lastInputAt = now
-      const advance = isHold ? HOLD_ADVANCE : 1
-      this.selectedIndex = Math.min(this.items.length - 1, this.selectedIndex + advance)
+      this.selectedIndex++
+      this._heldDir = 1
+      this._heldMs = 0
       this.updateScrollTarget()
       this.rebuildVisibleItems()
       this.ensureScrollLoopRunning()
+      this.ensureHoldRunning()
     },
     enter() {
       const item = this.items[this.selectedIndex]
@@ -308,6 +311,67 @@ export default Blits.Component('ContentRail', {
         return
       }
       this.scrollActual = easeStep(this.scrollActual, this.scrollTarget, dt)
+    },
+    // Register the hold-advance tick with the global RAF loop. Creates the
+    // bound fn once and reuses it — safe to call on every keydown.
+    ensureHoldRunning() {
+      if (this._holdActive) return
+      this._holdActive = true
+      if (!this._holdTickFn) this._holdTickFn = (dt) => this.holdTick(dt)
+      registerTick(this._holdTickFn)
+    },
+    // Per-frame: accumulate hold time. After HOLD_SCROLL_DELAY_MS calls
+    // holdAdvance so continuous scroll is driven by the frame loop, not OS
+    // auto-repeat — matches likerust's _chainHeld pattern exactly.
+    holdTick(dt) {
+      if (!this._heldDir) return
+      this._heldMs += dt
+      if (this._heldMs < HOLD_SCROLL_DELAY_MS) return
+      this.holdAdvance()
+    },
+    // Advance one card in the held direction when the animation has almost
+    // caught up to the current target (ahead < HOLD_AHEAD × cardStep). Keeps
+    // ~1 card of runway in front of the visual position — likerust holdAdvance.
+    holdAdvance() {
+      const dir = this._heldDir
+      const ahead =
+        dir > 0 ? this.scrollTarget - this.scrollActual : this.scrollActual - this.scrollTarget
+      if (ahead >= HOLD_AHEAD * this.cardStep) return
+      const next =
+        dir > 0
+          ? Math.min(this.items.length - 1, this.selectedIndex + 1)
+          : Math.max(0, this.selectedIndex - 1)
+      if (next === this.selectedIndex) {
+        this.stopHold()
+        return
+      }
+      this.selectedIndex = next
+      this.updateScrollTarget()
+      this.rebuildVisibleItems()
+      this.ensureScrollLoopRunning()
+    },
+    // On key release: snap to the nearest card boundary, coasting one extra
+    // card if the chosen stop is less than RELEASE_MIN_RUN card-steps away —
+    // likerust's releaseEase momentum feel. Only called when hold was active.
+    releaseEase(dir) {
+      const float = (this.scrollActual + CONTENT_PADDING_X) / this.cardStep
+      let snap = dir > 0 ? Math.ceil(float) : Math.floor(float)
+      if (dir > 0 && snap > float && snap - float < RELEASE_MIN_RUN) snap += 1
+      else if (dir < 0 && snap < float && float - snap < RELEASE_MIN_RUN) snap -= 1
+      snap = Math.max(0, Math.min(this.items.length - 1, snap))
+      this.selectedIndex = snap
+      this.updateScrollTarget()
+      this.rebuildVisibleItems()
+      this.ensureScrollLoopRunning()
+    },
+    // Clear held-key state and unregister the hold tick from the RAF loop.
+    stopHold() {
+      this._heldDir = null
+      this._heldMs = 0
+      if (this._holdActive && this._holdTickFn) {
+        unregisterTick(this._holdTickFn)
+        this._holdActive = false
+      }
     },
     // Rebuild the windowed visibleItems slice around the current
     // selection. Assigning a new array reference is required — mutating

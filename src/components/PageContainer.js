@@ -6,7 +6,13 @@ import {
   NAVBAR_TOP_GAP,
   cardDimsFor,
 } from '../constants/layout.js'
-import { PAGE_SCROLL_TAU_MS, SETTLE_PX, easeStep } from '../helpers/animations.js'
+import {
+  PAGE_SCROLL_TAU_MS,
+  SETTLE_PX,
+  easeStep,
+  HOLD_SCROLL_DELAY_MS,
+  HOLD_AHEAD,
+} from '../helpers/animations.js'
 import { registerTick, unregisterTick } from '../helpers/rafLoop.js'
 import { prefetchImages } from '../helpers/prefetch.js'
 import HeroCarousel from './HeroCarousel.js'
@@ -280,16 +286,18 @@ export default Blits.Component('PageContainer', {
     init() {
       // Navbar emits this when the user presses Down/Enter to enter the page.
       this.$listen('nav:focus-content', () => this.focusCurrentSection())
-      // Warm the HTTP image cache for rails just past the initial mount
-      // window. Rails 0..VISIBLE+DOWN are already mounting and their
-      // posters are fetching; this queues fetches for rails at
-      // firstBeyond..firstBeyond+LOOKAHEAD-1 so the user's first Down
-      // press lands on a rail whose images are already in the browser
-      // cache. Runs through requestIdleCallback so it does not steal
-      // budget from the initial paint.
       this.prefetchAdjacentRails()
+      // Listen for keyup to stop the hold tick when the user releases Up/Down.
+      // Registered for the lifetime of the component (always mounted via keepAlive).
+      this._pageKeyupFn = (e) => {
+        if (e.key === 'ArrowDown' && this._heldDir === 1) this.stopHold()
+        else if (e.key === 'ArrowUp' && this._heldDir === -1) this.stopHold()
+      }
+      document.addEventListener('keyup', this._pageKeyupFn)
     },
     destroy() {
+      if (this._pageKeyupFn) document.removeEventListener('keyup', this._pageKeyupFn)
+      this.stopHold()
       if (this._scrollActive && this._scrollTickFn) {
         unregisterTick(this._scrollTickFn)
         this._scrollActive = false
@@ -297,24 +305,31 @@ export default Blits.Component('PageContainer', {
     },
   },
   input: {
-    // No hold throttle here on purpose — see the note in helpers/animations.js.
-    // Held-key auto-repeat drives sectionIndex directly so the vertical
-    // scroll target Y advances as a smooth ramp, and exponential smoothing
-    // chasing a smoothly-moving target produces near-constant per-frame
-    // motion (flow) rather than the staircase of eased jumps a throttled
-    // input would create.
+    // Initial press: advance one section and start the hold timer. OS auto-repeat
+    // is suppressed in index.js so this fires only once per physical keydown.
+    // ensureHoldRunning registers a per-frame hold-advance tick (likerust model).
     down() {
-      if (this.sectionIndex >= this.maxSectionIndex) return
+      if (this.sectionIndex >= this.maxSectionIndex) {
+        this.stopHold()
+        return
+      }
       this.sectionIndex++
+      this._heldDir = 1
+      this._heldMs = 0
       this.ensureScrollLoopRunning()
+      this.ensureHoldRunning()
     },
     up() {
       if (this.sectionIndex <= 0) {
+        this.stopHold()
         this.$emit('nav:focus-navbar')
         return
       }
       this.sectionIndex--
+      this._heldDir = -1
+      this._heldMs = 0
       this.ensureScrollLoopRunning()
+      this.ensureHoldRunning()
     },
     back() {
       this.$emit('nav:focus-navbar')
@@ -405,6 +420,50 @@ export default Blits.Component('PageContainer', {
         }
       }
       if (urls.length) prefetchImages(urls)
+    },
+    // Register the hold-advance tick with the global RAF loop. Reuses the
+    // bound fn across presses — safe to call on every Down/Up keydown.
+    ensureHoldRunning() {
+      if (this._holdActive) return
+      this._holdActive = true
+      if (!this._holdTickFn) this._holdTickFn = (dt) => this.holdTick(dt)
+      registerTick(this._holdTickFn)
+    },
+    // Per-frame: accumulate hold time; after HOLD_SCROLL_DELAY_MS advance one
+    // section per frame when animation is within HOLD_AHEAD rail-heights of the
+    // current target — likerust's _holdAdvanceRail / _chainHeld pattern.
+    holdTick(dt) {
+      if (!this._heldDir) return
+      this._heldMs += dt
+      if (this._heldMs < HOLD_SCROLL_DELAY_MS) return
+      this.holdAdvanceSection()
+    },
+    // Advance one section if the animation has caught up within HOLD_AHEAD ×
+    // current rail height. Stops hold at boundaries so the tick unregisters.
+    holdAdvanceSection() {
+      const dir = this._heldDir
+      const target = -this.scrollOffset
+      const ahead = dir > 0 ? this.animY - target : target - this.animY
+      const railH = this.focusedRail ? this.focusedRail._railH : 386
+      if (ahead >= HOLD_AHEAD * railH) return
+      if (dir > 0 && this.sectionIndex < this.maxSectionIndex) {
+        this.sectionIndex++
+        this.ensureScrollLoopRunning()
+      } else if (dir < 0 && this.sectionIndex > 0) {
+        this.sectionIndex--
+        this.ensureScrollLoopRunning()
+      } else {
+        this.stopHold()
+      }
+    },
+    // Clear held-key state and unregister the hold tick from the RAF loop.
+    stopHold() {
+      this._heldDir = null
+      this._heldMs = 0
+      if (this._holdActive && this._holdTickFn) {
+        unregisterTick(this._holdTickFn)
+        this._holdActive = false
+      }
     },
     // Register with the global RAF loop if not already running. Also flips
     // isScrolling so cards downstream defer image src loading until settle.

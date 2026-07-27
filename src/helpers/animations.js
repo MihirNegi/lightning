@@ -17,37 +17,30 @@ export const DURATION = {
   hero: 800,
 }
 
-// Minimum time between two accepted directional key events on the same input
-// handler. Prevents rapid keydown auto-repeat (~30/sec) from queuing dozens of
-// state changes and making the scroll glide silently to the final target;
-// instead the user sees the focus move one step at a time.
+// Minimum time between two accepted directional key events for Navbar and
+// HeroCarousel, which throttle their own input.
 export const HOLD_THROTTLE_MS = 250
 
-// Neither the page's Up/Down input (PageContainer) nor a rail's Left/Right
-// input (ContentRail) is hold-throttled. Held-key browser auto-repeat
-// (~30/sec) drives sectionIndex / selectedIndex directly, so both scroll
-// targets advance as smooth ramps rather than as discrete jumps every N
-// milliseconds. Exponential smoothing tracking a smoothly-moving target
-// reaches a steady state where position velocity equals target velocity —
-// per-frame movement becomes near-constant, and the eye reads that as
-// "flow" rather than a staircase of eased steps. This matches the Rust
-// reference's motion model exactly (Rust throttles neither axis and uses
-// SMOOTH_TAU_MS = 90 for both). On release, target stops advancing and
-// position eases the residual steady-state lag to zero — giving the
-// momentum-like coast-and-settle that a throttled model can't produce.
-
 // Exponential-smoothing time constants (in milliseconds) for the rAF scroll
-// loops in ContentRail (horizontal) and PageContainer (vertical). Each loop
-// calls easeStep() every frame; TAU controls the perceived "weight".
-// Smaller TAU = snappier (position tracks target more tightly, less coast
-// on release). At steady state during a held key, position velocity equals
-// target velocity regardless of TAU — so TAU controls response character,
-// not sustained scroll speed. Both axes match the Rust reference at 90.
-// To make holds *faster* than the target-velocity ceiling, see the
-// HOLD_ADVANCE mechanism in ContentRail — that skips cards per press
-// during a detected hold, doubling the effective velocity.
-export const RAIL_SCROLL_TAU_MS = 90
-export const PAGE_SCROLL_TAU_MS = 90
+// loops in ContentRail (horizontal) and PageContainer (vertical). Matched to
+// likerust: NAV_TAU = 110ms (snappy horizontal), RAIL_TAU = 200ms (weighted
+// vertical). Both are frame-rate independent — easeStep uses real dt.
+export const RAIL_SCROLL_TAU_MS = 110
+export const PAGE_SCROLL_TAU_MS = 200
+
+// Hold-scroll timing constants — direct port of likerust's carousel.js.
+// HOLD_SCROLL_DELAY_MS: key must be held this long before continuous scroll
+// starts. Prevents accidental repeats on tap.
+export const HOLD_SCROLL_DELAY_MS = 200
+// HOLD_AHEAD: advance the target one more step when ahead distance (pixels)
+// drops below this many card/rail-step multiples. Keeps ~1 unit of runway
+// in front of the visual position so the animation always has something to
+// chase, producing smooth chaining at steady-state hold speed.
+export const HOLD_AHEAD = 1.0
+// RELEASE_MIN_RUN: on keyup, if the chosen snap stop is less than this many
+// card-steps away from the current visual position, coast one card further —
+// matches likerust's releaseEase momentum feel.
+export const RELEASE_MIN_RUN = 0.4
 
 // Tab-to-tab horizontal page slide. Larger tau than the scroll axes
 // because the distance travelled is a full stage width (1920 px) vs a

@@ -1,6 +1,29 @@
 import Blits from '@lightningjs/blits'
 import App from './App.js'
 
+// Suppress OS auto-repeat for directional keys. The app's per-frame hold model
+// (ContentRail.holdTick / PageContainer.holdTick) controls scroll cadence from
+// the RAF loop — OS repeat would bypass that and fire Blits input handlers at
+// the browser's native repeat rate (~30/sec), undermining the chained-advance
+// logic. Window capture-phase runs before Blits' bubble-phase listener;
+// stopImmediatePropagation kills the event before it reaches Blits at all.
+window.addEventListener(
+  'keydown',
+  (e) => {
+    if (
+      e.repeat &&
+      (e.key === 'ArrowLeft' ||
+        e.key === 'ArrowRight' ||
+        e.key === 'ArrowUp' ||
+        e.key === 'ArrowDown')
+    ) {
+      e.preventDefault()
+      e.stopImmediatePropagation()
+    }
+  },
+  { capture: true },
+)
+
 Blits.Launch(App, 'app', {
   w: 1920,
   h: 1080,
