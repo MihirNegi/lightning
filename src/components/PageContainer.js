@@ -313,6 +313,12 @@ export default Blits.Component('PageContainer', {
       this.updateRailWindow()
       this.ensureScrollLoopRunning()
       this.ensureHoldRunning()
+      // Hero → first rail: move focus immediately so the user sees the rail
+      // focus ring on the first press. Without this, focus is deferred to
+      // scroll settle (~1s at tau=200ms) — no visual feedback, so the user
+      // presses again, overshooting to rail 1. Rail→rail transitions keep
+      // deferred focus to avoid the title-fade firing on every hold press.
+      if (this.hasHero && this.sectionIndex === 1) this.focusCurrentSection()
     },
     up() {
       if (this.sectionIndex <= 0) {
@@ -326,6 +332,9 @@ export default Blits.Component('PageContainer', {
       this.updateRailWindow()
       this.ensureScrollLoopRunning()
       this.ensureHoldRunning()
+      // First rail → hero: move focus immediately so the Watch Now button
+      // lights up on the first press (mirrors the down() hero→rail fix).
+      if (this.hasHero && this.sectionIndex === 0) this.focusCurrentSection()
     },
     back() {
       this.$emit('nav:focus-navbar')

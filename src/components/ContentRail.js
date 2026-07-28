@@ -8,6 +8,7 @@ import {
   RELEASE_MIN_RUN,
 } from '../helpers/animations.js'
 import { registerTick, unregisterTick } from '../helpers/rafLoop.js'
+import { preloadImage } from '../helpers/imageRamCache.js'
 import PosterCard from './PosterCard.js'
 
 // Lazy-mount window: how many cards to render around the current selection.
@@ -19,16 +20,17 @@ import PosterCard from './PosterCard.js'
 // horizontal scroll fills in before the eye can register the miss.
 //
 // The window is deliberately tight to minimise per-rail-mount cost — a
-// fresh ContentRail creates 1+1+4=6 cards up front (down from 7, which
-// was down from 8, which was down from 10). Each card is a small Blits
-// component with its own reactive bindings, and creating them all in one
-// synchronous burst is the main source of the per-rail-boundary jank
-// observed during vertical hold-scroll. Tighter window = smaller burst.
-// AFTER=4: right edge of card 4 sits at x = 64 + 4×288 = 1216px,
-// leaving 704px of stage width still clipped — enough that the previous
-// card fills the gap before the eye can register it during scroll.
+// fresh ContentRail creates 1+1+5=7 cards up front (down from 8, which
+// was down from 10). Each card is a small Blits component with its own
+// reactive bindings, and creating them all in one synchronous burst is
+// the main source of the per-rail-boundary jank observed during vertical
+// hold-scroll (one new rail crossing = one instantiation burst). Tighter
+// window = smaller burst.
+// AFTER=6: card at focus+6 starts at x=1792 and is clipped at the 1920
+// stage edge — ~128px (~half the card) is visible, giving the user a
+// visual cue that more content exists to the right.
 const WINDOW_BEFORE = 1
-const WINDOW_AFTER = 4
+const WINDOW_AFTER = 6
 
 // Static vertical offset of each card inside the clip. 8px of breathing
 // room above the card, matched by a 16px pad in clipH below.
@@ -244,6 +246,7 @@ export default Blits.Component('ContentRail', {
       this.rebuildVisibleItems()
       this.ensureScrollLoopRunning()
       this.ensureHoldRunning()
+      this.prefetchHorizonCard(-1)
     },
     right() {
       if (this.selectedIndex >= this.items.length - 1) return
@@ -254,6 +257,7 @@ export default Blits.Component('ContentRail', {
       this.rebuildVisibleItems()
       this.ensureScrollLoopRunning()
       this.ensureHoldRunning()
+      this.prefetchHorizonCard(1)
     },
     enter() {
       const item = this.items[this.selectedIndex]
@@ -351,6 +355,7 @@ export default Blits.Component('ContentRail', {
       this.updateScrollTarget()
       this.rebuildVisibleItems()
       this.ensureScrollLoopRunning()
+      this.prefetchHorizonCard(dir)
     },
     // On key release: snap to the nearest card boundary, coasting one extra
     // card if the chosen stop is less than RELEASE_MIN_RUN card-steps away —
@@ -365,6 +370,17 @@ export default Blits.Component('ContentRail', {
       this.updateScrollTarget()
       this.rebuildVisibleItems()
       this.ensureScrollLoopRunning()
+    },
+    // Preload the image for the card just outside the current window boundary
+    // in the given direction. When that card mounts on the next selection
+    // advance, its decoded bitmap is already in the RAM cache (imageRamCache)
+    // so activeSrc can commit to a cache-hit instead of a cold network fetch —
+    // eliminating the black-placeholder visible between mount and decode.
+    prefetchHorizonCard(dir) {
+      const idx =
+        dir > 0 ? this.selectedIndex + WINDOW_AFTER + 1 : this.selectedIndex - WINDOW_BEFORE - 1
+      const item = this.items[idx]
+      if (item && item.image) preloadImage(item.image)
     },
     // Clear held-key state and unregister the hold tick from the RAF loop.
     stopHold() {
