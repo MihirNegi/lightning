@@ -1,12 +1,13 @@
-// Warm the browser's HTTP image cache for URLs we expect to need soon.
+// Warm the browser's HTTP + decoded-image cache for URLs we expect soon.
 //
-// The renderer's texture pipeline (Blits -> WebGL) fetches image URLs
-// through Blits' own loader; that loader still ends up going through the
-// browser's HTTP cache, so a prior new Image() fetch for the same URL
-// short-circuits the network round-trip. We use raw new Image() (not
-// fetch()) so the request is treated as an "image" resource by the
-// browser — same fetch priority + cache bucket as the eventual real
-// load, so the cache hit is deterministic.
+// Two-tier caching (mirrors likerust's ImageCache + WebGL2Renderer split):
+//   Tier 1 — HTTP cache: network response stored by the browser.
+//   Tier 2 — RAM cache: live HTMLImageElement kept in imageRamCache.js LRU
+//             so the decoded bitmap is NOT freed between HTTP hit and GPU
+//             upload. Without this, Blits must re-decode from compressed
+//             bytes (~5-10ms per image) on every VRAM eviction + re-mount.
+//             With it, re-upload is decode-free: browser serves the bitmap
+//             straight from memory.
 //
 // Scheduling: requestIdleCallback runs the batch only when the main
 // thread is genuinely idle, so the prefetch never competes with a scroll
@@ -17,6 +18,8 @@
 // Dedup: a module-level Set remembers URLs we've already warmed for the
 // life of the tab. Repeated calls with overlapping URLs skip the already-
 // warmed ones for free, so callers don't need to track state themselves.
+
+import { preloadImage } from './imageRamCache.js'
 
 const warmed = new Set()
 
@@ -54,12 +57,11 @@ function drainBatch(pending, deadline) {
     const url = pending[i++]
     if (warmed.has(url)) continue
     warmed.add(url)
-    // No handlers attached — we only want the browser to fetch and cache
-    // the resource. Assigning src kicks off the request; the Image object
-    // is then GC'd once this function returns, which is fine because the
-    // HTTP response is cached at the browser level, not held by the ref.
-    const img = new Image()
-    img.src = url
+    // preloadImage keeps a live HTMLImageElement in the RAM LRU cache so
+    // the decoded bitmap survives past this call. The browser reuses the
+    // decoded bitmap when Blits loads the same URL later — no re-decode
+    // needed even after a VRAM eviction. HTTP caching still applies too.
+    preloadImage(url)
   }
   if (i < pending.length) {
     const rest = pending.slice(i)

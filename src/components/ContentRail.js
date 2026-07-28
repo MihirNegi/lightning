@@ -19,14 +19,16 @@ import PosterCard from './PosterCard.js'
 // horizontal scroll fills in before the eye can register the miss.
 //
 // The window is deliberately tight to minimise per-rail-mount cost — a
-// fresh ContentRail creates 1+1+5=7 cards up front (down from 8, which
-// was down from 10). Each card is a small Blits component with its own
-// reactive bindings, and creating them all in one synchronous burst is
-// the main source of the per-rail-boundary jank observed during vertical
-// hold-scroll (one new rail crossing = one instantiation burst). Tighter
-// window = smaller burst.
+// fresh ContentRail creates 1+1+4=6 cards up front (down from 7, which
+// was down from 8, which was down from 10). Each card is a small Blits
+// component with its own reactive bindings, and creating them all in one
+// synchronous burst is the main source of the per-rail-boundary jank
+// observed during vertical hold-scroll. Tighter window = smaller burst.
+// AFTER=4: right edge of card 4 sits at x = 64 + 4×288 = 1216px,
+// leaving 704px of stage width still clipped — enough that the previous
+// card fills the gap before the eye can register it during scroll.
 const WINDOW_BEFORE = 1
-const WINDOW_AFTER = 5
+const WINDOW_AFTER = 4
 
 // Static vertical offset of each card inside the clip. 8px of breathing
 // room above the card, matched by a 16px pad in clipH below.

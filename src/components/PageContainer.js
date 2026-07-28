@@ -35,7 +35,11 @@ const CARD_INNER_TOP_Y = 8
 // slides one rail per focus-crossing regardless of buffer size, so
 // buffers control coverage/memory, not mount frequency.
 const RAIL_BUFFER_UP = 1
-const RAIL_BUFFER_DOWN = 1
+// Increased to 2 so the next two rails are always pre-mounted ahead of the
+// viewport. Mount bursts (7 PosterCards created at once) now fire 1 extra
+// rail-height earlier — during frames where the animation has budget to
+// absorb the ~15ms init cost rather than mid-flight at the visible boundary.
+const RAIL_BUFFER_DOWN = 2
 const RAIL_VISIBLE_ROWS = 3
 
 // How many rails PAST the mounted window to warm the HTTP image cache
@@ -142,6 +146,12 @@ export default Blits.Component('PageContainer', {
       // snap alpha to 1 instead of running a 200ms fade. Cleared on the
       // scrollTick settle branch when position reaches the target.
       isScrolling: false,
+      // Frame overlay constants — promoted from computed to state so Blits
+      // does not re-evaluate them on every reactive cycle during scroll.
+      // These values are pure compile-time constants; they never change.
+      frameMargin: FRAME_MARGIN,
+      frameX: CONTENT_PADDING_X - FRAME_MARGIN,
+      frameY: CONTENT_TOP_Y + RAIL_TITLE_STRIP_H + CARD_INNER_TOP_Y - FRAME_MARGIN,
     }
   },
   computed: {
@@ -250,31 +260,15 @@ export default Blits.Component('PageContainer', {
       const rail = this.focusedRail
       return cardDimsFor(rail ? rail.orientation : 'portrait')
     },
-    frameMargin() {
-      return FRAME_MARGIN
-    },
+    // frameMargin / frameX / frameY are compile-time constants — kept in
+    // state() above so Blits skips their re-evaluation on every scroll frame.
     frameW() {
       return this.focusedRailDims.cardW + FRAME_MARGIN * 2
     },
     frameH() {
       return this.focusedRailDims.cardH + FRAME_MARGIN * 2
     },
-    // Absolute screen x of the frame's top-left corner. ContentRail pins
-    // the focused card's left edge at CONTENT_PADDING_X for every value
-    // of selectedIndex, so the frame sits 5px LEFT of that (FRAME_MARGIN
-    // outside the card) — a static value that never changes with input.
-    frameX() {
-      return CONTENT_PADDING_X - FRAME_MARGIN
-    },
-    // Absolute screen y of the frame's top-left corner. Sits at the fixed
-    // "row of focus": below the navbar + gap, past the rail title strip,
-    // at the card's inner top offset, minus the frame margin so the frame
-    // is 5px OUTSIDE the card on top.
-    frameY() {
-      return CONTENT_TOP_Y + RAIL_TITLE_STRIP_H + CARD_INNER_TOP_Y - FRAME_MARGIN
-    },
     // The bottom-bar's y within the frame element (frameH - FRAME_MARGIN).
-    // Templates cannot compute this inline, so exposed as its own field.
     frameBottomBarY() {
       return this.frameH - FRAME_MARGIN
     },
@@ -425,10 +419,12 @@ export default Blits.Component('PageContainer', {
         this.sectionIndex++
         this.updateRailWindow()
         this.ensureScrollLoopRunning()
+        this.prefetchAdjacentRails()
       } else if (dir < 0 && this.sectionIndex > 0) {
         this.sectionIndex--
         this.updateRailWindow()
         this.ensureScrollLoopRunning()
+        this.prefetchAdjacentRails()
       } else {
         this.stopHold()
       }
